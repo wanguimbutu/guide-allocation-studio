@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Cloud, CloudOff, RefreshCcw, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, Cloud, CloudOff, Download, RefreshCcw, Send } from "lucide-react";
 import { addWeeks, subWeeks } from "date-fns";
 import { formatIsoDate, getWeekStart, weekRangeLabel } from "../lib/date";
 import { usePlannerStore } from "../store/usePlannerStore";
@@ -9,6 +9,7 @@ export function Toolbar() {
   const loadWeek = usePlannerStore((state) => state.loadWeek);
   const syncPending = usePlannerStore((state) => state.syncPending);
   const submitWeek = usePlannerStore((state) => state.submitWeek);
+  const downloadPlan = usePlannerStore((state) => state.downloadPlan);
 
   const previousWeek = () => {
     loadWeek(formatIsoDate(subWeeks(new Date(week.weekStart), 1)));
@@ -67,6 +68,10 @@ export function Toolbar() {
           <button onClick={() => void syncPending()} disabled={!syncStatus.online || syncStatus.syncing}>
             <Send size={16} />
             {syncStatus.syncing ? "Syncing..." : "Sync"}
+          </button>
+          <button onClick={downloadPlan}>
+            <Download size={16} />
+            Download plan
           </button>
           <button className="accent" onClick={() => void submitWeek()}>
             Submit week

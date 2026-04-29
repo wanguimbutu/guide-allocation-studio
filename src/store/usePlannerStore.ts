@@ -76,8 +76,16 @@ interface PlannerState {
   removeAllocation: (allocationId: string) => Promise<void>;
   toggleBlackout: (instructor: string, dayIndex: number, slot: Slot) => Promise<void>;
   submitWeek: () => Promise<void>;
+  checkedTasks: Record<string, boolean>;
+  frozenTasks: Record<string, boolean>;
+  guideSlotPrefs: Record<string, "AM" | "PM" | "Both">;
   addTask: (task: Omit<TaskItem, "name">) => Promise<void>;
   removeTask: (taskName: string) => Promise<void>;
+  toggleTaskChecked: (taskName: string) => void;
+  toggleTaskFrozen: (taskName: string) => void;
+  setGuideSlotPref: (instructor: string, pref: "AM" | "PM" | "Both") => void;
+  removeAllocationSession: (allocationId: string) => Promise<void>;
+  downloadPlan: () => void;
   setSelectionAnchor: (section: "activity" | "guide", row: number, col: number) => void;
   extendSelection: (section: "activity" | "guide", row: number, col: number) => void;
   clearSelection: () => void;
@@ -223,6 +231,9 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   selection: null,
   clipboard: null,
   config: null,
+  checkedTasks: {},
+  frozenTasks: {},
+  guideSlotPrefs: {},
   syncStatus: {
     online: typeof navigator !== "undefined" ? navigator.onLine : true,
     syncing: false,
@@ -505,6 +516,87 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     };
     await saveWeek(nextWeek);
     set({ week: nextWeek });
+  },
+
+  // ── UI state ────────────────────────────────────────────────────────────────
+
+  toggleTaskChecked(taskName) {
+    set((s) => ({ checkedTasks: { ...s.checkedTasks, [taskName]: !s.checkedTasks[taskName] } }));
+  },
+
+  toggleTaskFrozen(taskName) {
+    set((s) => ({ frozenTasks: { ...s.frozenTasks, [taskName]: !s.frozenTasks[taskName] } }));
+  },
+
+  setGuideSlotPref(instructor, pref) {
+    set((s) => ({ guideSlotPrefs: { ...s.guideSlotPrefs, [instructor]: pref } }));
+  },
+
+  async removeAllocationSession(allocationId) {
+    const { week } = get();
+    const target = week.allocations.find((a) => a.allocationId === allocationId);
+    if (!target) return;
+    const toRemove = week.allocations.filter(
+      (a) =>
+        a.instructor === target.instructor &&
+        a.dayIndex === target.dayIndex &&
+        (target.taskName
+          ? a.taskName === target.taskName
+          : a.subject === target.subject && a.customerName === target.customerName)
+    );
+    if (toRemove.length === 0) return;
+    const idsToRemove = new Set(toRemove.map((a) => a.allocationId));
+    const nextWeek = {
+      ...week,
+      allocations: week.allocations.filter((a) => !idsToRemove.has(a.allocationId))
+    };
+    await saveWeek(nextWeek);
+    set({ week: nextWeek });
+    const weekStartMs = new Date(week.weekStart).getTime();
+    for (const alloc of toRemove) {
+      const activityDate = new Date(weekStartMs + alloc.dayIndex * 86400000).toISOString().slice(0, 10);
+      await queueAction({
+        id: generateId("remove-allocation"),
+        type: "remove-allocation",
+        payload: { instructor: alloc.instructor, activity_date: activityDate, activity_name: alloc.subject },
+        createdAt: Date.now()
+      });
+    }
+    set((s) => ({
+      syncStatus: { ...s.syncStatus, pendingCount: s.syncStatus.pendingCount + toRemove.length }
+    }));
+  },
+
+  downloadPlan() {
+    const { week } = get();
+    const rows: string[][] = [["Date", "Day", "Slot", "Guide", "Activity", "Customer", "Pax"]];
+    const weekStartMs = new Date(week.weekStart).getTime();
+    const sorted = [...week.allocations].sort(
+      (a, b) =>
+        a.dayIndex - b.dayIndex ||
+        a.slot.localeCompare(b.slot) ||
+        a.instructor.localeCompare(b.instructor)
+    );
+    for (const alloc of sorted) {
+      const date = new Date(weekStartMs + alloc.dayIndex * 86400000);
+      const dateStr = date.toISOString().slice(0, 10);
+      const dayStr = date.toLocaleDateString("en-GB", { weekday: "short" });
+      const guide =
+        week.instructors.find((i) => i.name === alloc.instructor)?.instructorName ?? alloc.instructor;
+      const task = alloc.taskName ? week.tasks.find((t) => t.name === alloc.taskName) : null;
+      const pax = task?.noOfPeople?.toString() ?? "";
+      rows.push([dateStr, dayStr, alloc.slot, guide, alloc.subject, alloc.customerName, pax]);
+    }
+    const csv = rows
+      .map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plan-${week.weekStart}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   },
 
   // ── Selection ───────────────────────────────────────────────────────────────

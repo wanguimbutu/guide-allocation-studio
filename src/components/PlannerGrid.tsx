@@ -26,11 +26,8 @@ function textOnColor(hex: string): string {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.52 ? "#1a1a1a" : "#ffffff";
 }
 
-/** True if the task is scheduled on the given ISO date */
 function isTaskOnDay(task: TaskItem, dayIso: string): boolean {
-  if (task.assignedDate) {
-    return task.assignedDate.slice(0, 10) === dayIso;
-  }
+  if (task.assignedDate) return task.assignedDate.slice(0, 10) === dayIso;
   const start = task.expStartDate ?? "";
   const end = task.expEndDate ?? task.expStartDate ?? "";
   return dayIso >= start && dayIso <= end;
@@ -60,16 +57,21 @@ function CustomerCell({
   const colIndex = dayIndex * 2 + (slot === "AM" ? 0 : 1);
   const active = isTaskOnDay(task, dayIso);
 
-  const guideName = usePlannerStore((state) => {
+  const guideInfo = usePlannerStore((state) => {
     const alloc = state.week.allocations.find(
       (a) => a.taskName === task.name && a.dayIndex === dayIndex && a.slot === slot
     );
     if (!alloc) return null;
-    return (
-      state.week.instructors.find((i) => i.name === alloc.instructor)?.instructorName ??
-      alloc.instructor
-    );
+    return {
+      allocationId: alloc.allocationId,
+      guideName:
+        state.week.instructors.find((i) => i.name === alloc.instructor)?.instructorName ??
+        alloc.instructor
+    };
   });
+
+  const isFrozen = usePlannerStore((state) => Boolean(state.frozenTasks[task.name]));
+  const removeAllocationSession = usePlannerStore((state) => state.removeAllocationSession);
 
   const isInSelection = usePlannerStore((state) => {
     if (!state.selection || state.selection.anchor.section !== "activity") return false;
@@ -105,7 +107,7 @@ function CustomerCell({
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: draggableId,
     data: { type: "task", taskName: task.name },
-    disabled: !active
+    disabled: !active || isFrozen
   });
 
   if (!active) {
@@ -130,7 +132,7 @@ function CustomerCell({
   const style: CSSProperties = {
     background: isInSelection ? undefined : task.color,
     color: isInSelection ? undefined : textOnColor(task.color),
-    cursor: "grab"
+    cursor: isFrozen ? "default" : "grab"
   };
 
   return (
@@ -138,6 +140,7 @@ function CustomerCell({
       ref={setNodeRef}
       className={clsx("ss-cell ss-cell--customer", {
         "ss-cell--dragging": isDragging,
+        "ss-cell--frozen": isFrozen,
         "ss-cell--in-selection": isInSelection,
         "ss-cell--selection-anchor": isAnchor && !clipboardVisual,
         "ss-cell--copy-source": clipboardVisual === "copy",
@@ -152,7 +155,22 @@ function CustomerCell({
       <div className="ss-cell-body">
         <span className="ss-cell-activity">{task.subject}</span>
         <span className="ss-cell-customer-tag">{task.customerName}</span>
-        {guideName && <span className="ss-cell-guide-badge">↳ {guideName}</span>}
+        {guideInfo && (
+          <div className="ss-cell-guide-row">
+            <span className="ss-cell-guide-badge">↳ {guideInfo.guideName}</span>
+            <button
+              className="ss-cell-guide-remove"
+              title="Remove guide assignment"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                void removeAllocationSession(guideInfo.allocationId);
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -192,6 +210,12 @@ function GuideCell({
       ) ?? null
   );
 
+  const slotPref = usePlannerStore((state) => state.guideSlotPrefs[instructor] ?? "Both");
+  const isRestricted =
+    !alloc &&
+    !isBlackout &&
+    ((slotPref === "AM" && slot === "PM") || (slotPref === "PM" && slot === "AM"));
+
   const isInSelection = usePlannerStore((state) => {
     if (!state.selection || state.selection.anchor.section !== "guide") return false;
     const { anchor, focus } = state.selection;
@@ -222,19 +246,20 @@ function GuideCell({
     return null;
   });
 
-  const removeAllocation = usePlannerStore((state) => state.removeAllocation);
+  const removeAllocationSession = usePlannerStore((state) => state.removeAllocationSession);
   const toggleBlackout = usePlannerStore((state) => state.toggleBlackout);
 
   const { setNodeRef, isOver } = useDroppable({
     id: `cell:${instructor}-${dayIndex}-${slot}`,
-    data: { type: "cell", instructor, dayIndex, slot }
+    data: { type: "cell", instructor, dayIndex, slot },
+    disabled: isRestricted || isBlackout
   });
 
   const style: CSSProperties = {};
   if (alloc) {
     style.background = alloc.color;
     style.color = textOnColor(alloc.color);
-  } else if (isOddRow && !isToday) {
+  } else if (isOddRow && !isToday && !isRestricted) {
     style.background = "#f8f9fa";
   }
 
@@ -244,7 +269,8 @@ function GuideCell({
       className={clsx("ss-cell", {
         "ss-cell--over": isOver,
         "ss-cell--blackout": isBlackout && !alloc,
-        "ss-cell--today": isToday && !alloc && !isInSelection,
+        "ss-cell--restricted": isRestricted,
+        "ss-cell--today": isToday && !alloc && !isInSelection && !isRestricted,
         "ss-cell--allocated": !!alloc,
         "ss-cell--in-selection": isInSelection,
         "ss-cell--selection-anchor": isAnchor && !clipboardVisual,
@@ -261,11 +287,11 @@ function GuideCell({
           <span className="ss-cell-customer-tag">{alloc.customerName}</span>
           <button
             className="ss-cell-remove"
-            title="Remove"
+            title="Remove (removes all sessions for this task on this day)"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              void removeAllocation(alloc.allocationId);
+              void removeAllocationSession(alloc.allocationId);
             }}
           >
             ×
@@ -273,17 +299,22 @@ function GuideCell({
         </div>
       )}
       {isBlackout && !alloc && <span className="ss-cell-off">OFF</span>}
-      <button
-        className="ss-cell-ban"
-        title={isBlackout ? "Remove blackout" : "Mark unavailable"}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          void toggleBlackout(instructor, dayIndex, slot);
-        }}
-      >
-        {isBlackout ? "↺" : "⊘"}
-      </button>
+      {isRestricted && !alloc && (
+        <span className="ss-cell-off ss-cell-restricted-label">{slotPref} only</span>
+      )}
+      {!isRestricted && (
+        <button
+          className="ss-cell-ban"
+          title={isBlackout ? "Remove blackout" : "Mark unavailable"}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            void toggleBlackout(instructor, dayIndex, slot);
+          }}
+        >
+          {isBlackout ? "↺" : "⊘"}
+        </button>
+      )}
     </div>
   );
 }
@@ -331,7 +362,13 @@ export function PlannerGrid() {
   const assignTask = usePlannerStore((state) => state.assignTask);
   const addTask = usePlannerStore((state) => state.addTask);
   const removeTask = usePlannerStore((state) => state.removeTask);
-  const moveTask = usePlannerStore((state) => state.moveTask);
+  const checkedTasks = usePlannerStore((state) => state.checkedTasks);
+  const frozenTasks = usePlannerStore((state) => state.frozenTasks);
+  const guideSlotPrefs = usePlannerStore((state) => state.guideSlotPrefs);
+  const toggleTaskChecked = usePlannerStore((state) => state.toggleTaskChecked);
+  const toggleTaskFrozen = usePlannerStore((state) => state.toggleTaskFrozen);
+  const setGuideSlotPref = usePlannerStore((state) => state.setGuideSlotPref);
+
   const days = week.weekStart ? buildWeekDays(week.weekStart) : [];
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
@@ -345,7 +382,12 @@ export function PlannerGrid() {
   );
 
   // ── Activity picker ──────────────────────────────────────────────────────────
-  const handlePickActivity = (dayIso: string, slot: Slot, customerName: string, anchor: { x: number; y: number }) => {
+  const handlePickActivity = (
+    dayIso: string,
+    slot: Slot,
+    customerName: string,
+    anchor: { x: number; y: number }
+  ) => {
     setPickerTarget({ dayIso, slot, anchor, presetCustomer: customerName });
   };
 
@@ -376,7 +418,9 @@ export function PlannerGrid() {
   };
 
   useEffect(() => {
-    const onMouseUp = () => { isSelectingRef.current = false; };
+    const onMouseUp = () => {
+      isSelectingRef.current = false;
+    };
     window.addEventListener("mouseup", onMouseUp);
     return () => window.removeEventListener("mouseup", onMouseUp);
   }, []);
@@ -428,7 +472,7 @@ export function PlannerGrid() {
     <DndContext
       sensors={sensors}
       onDragStart={(e) => {
-        isSelectingRef.current = false; // dnd drag cancels any in-progress range selection
+        isSelectingRef.current = false;
         const name = e.active.data.current?.taskName;
         if (typeof name === "string") setActiveTaskName(name);
       }}
@@ -483,7 +527,11 @@ export function PlannerGrid() {
           )}
 
           {/* ── CUSTOMER / ACTIVITY SECTION ─────────────────── */}
-          <SectionRow label="Activities" colCount={slotCount} />
+          <SectionRow
+            label="Activities"
+            colCount={slotCount}
+            onAdd={() => setShowAddModal(true)}
+          />
 
           {week.tasks.length === 0 && (
             <div className="ss-empty" style={{ gridColumn: "1 / -1" }}>
@@ -496,21 +544,48 @@ export function PlannerGrid() {
             <div key={task.name} style={{ display: "contents" }}>
               <div
                 className={clsx("ss-guide-cell ss-task-label", {
-                  "ss-guide-cell--odd": rowIndex % 2 === 1
+                  "ss-guide-cell--odd": rowIndex % 2 === 1,
+                  "ss-task-label--checked": checkedTasks[task.name],
+                  "ss-task-label--frozen": frozenTasks[task.name]
                 })}
                 style={{ borderLeft: `4px solid ${task.color}` }}
               >
                 <div className="ss-task-label-inner">
-                  <strong>{task.customerName}</strong>
-                  <small>{task.subject}</small>
-                  {task.noOfPeople != null && (
-                    <small className="ss-pax">{task.noOfPeople} pax</small>
-                  )}
+                  <input
+                    type="checkbox"
+                    className="ss-task-check"
+                    checked={Boolean(checkedTasks[task.name])}
+                    onChange={() => toggleTaskChecked(task.name)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Mark as done"
+                  />
+                  <div className="ss-task-label-text">
+                    <strong>{task.customerName}</strong>
+                    <small>{task.subject}</small>
+                    {task.noOfPeople != null && (
+                      <small className="ss-pax">{task.noOfPeople} pax</small>
+                    )}
+                  </div>
+                  <button
+                    className="ss-task-freeze"
+                    title={frozenTasks[task.name] ? "Unfreeze" : "Freeze (prevent drag)"}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleTaskFrozen(task.name);
+                    }}
+                  >
+                    {frozenTasks[task.name] ? "🔓" : "🔒"}
+                  </button>
                   <button
                     className="ss-task-remove"
                     title="Remove activity"
                     onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); void removeTask(task.name); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void removeTask(task.name);
+                    }}
                   >
                     ×
                   </button>
@@ -582,7 +657,25 @@ export function PlannerGrid() {
                   "ss-guide-cell--odd": rowIndex % 2 === 1
                 })}
               >
-                <strong>{instructor.instructorName}</strong>
+                <div className="ss-guide-label-top">
+                  <strong>{instructor.instructorName}</strong>
+                  <button
+                    className={clsx("ss-slot-pref-btn", {
+                      "ss-slot-pref-btn--active": (guideSlotPrefs[instructor.name] ?? "Both") !== "Both"
+                    })}
+                    title="Cycle slot preference: AM+PM → AM only → PM only"
+                    onClick={() => {
+                      const pref = guideSlotPrefs[instructor.name] ?? "Both";
+                      const next =
+                        pref === "Both" ? "AM" : pref === "AM" ? "PM" : "Both";
+                      setGuideSlotPref(instructor.name, next);
+                    }}
+                  >
+                    {(guideSlotPrefs[instructor.name] ?? "Both") === "Both"
+                      ? "AM+PM"
+                      : guideSlotPrefs[instructor.name]}
+                  </button>
+                </div>
                 {instructor.qualifications && (
                   <small>{instructor.qualifications.split("|")[0]?.split(":")[0]}</small>
                 )}
@@ -656,7 +749,10 @@ export function PlannerGrid() {
           weekEnd={week.weekEnd}
           initialSubject={modalInitialSubject}
           onAdd={(task) => void addTask(task)}
-          onClose={() => { setShowAddModal(false); setModalInitialSubject(undefined); }}
+          onClose={() => {
+            setShowAddModal(false);
+            setModalInitialSubject(undefined);
+          }}
         />
       )}
     </DndContext>
