@@ -57,17 +57,21 @@ function CustomerCell({
   const colIndex = dayIndex * 2 + (slot === "AM" ? 0 : 1);
   const active = isTaskOnDay(task, dayIso);
 
-  const guideInfo = usePlannerStore((state) => {
+  const guideAllocationId = usePlannerStore((state) => {
+    const alloc = state.week.allocations.find(
+      (a) => a.taskName === task.name && a.dayIndex === dayIndex && a.slot === slot
+    );
+    return alloc?.allocationId ?? null;
+  });
+  const guideName = usePlannerStore((state) => {
     const alloc = state.week.allocations.find(
       (a) => a.taskName === task.name && a.dayIndex === dayIndex && a.slot === slot
     );
     if (!alloc) return null;
-    return {
-      allocationId: alloc.allocationId,
-      guideName:
-        state.week.instructors.find((i) => i.name === alloc.instructor)?.instructorName ??
-        alloc.instructor
-    };
+    return (
+      state.week.instructors.find((i) => i.name === alloc.instructor)?.instructorName ??
+      alloc.instructor
+    );
   });
 
   const isFrozen = usePlannerStore((state) => Boolean(state.frozenTasks[task.name]));
@@ -155,16 +159,16 @@ function CustomerCell({
       <div className="ss-cell-body">
         <span className="ss-cell-activity">{task.subject}</span>
         <span className="ss-cell-customer-tag">{task.customerName}</span>
-        {guideInfo && (
+        {guideName && guideAllocationId && (
           <div className="ss-cell-guide-row">
-            <span className="ss-cell-guide-badge">↳ {guideInfo.guideName}</span>
+            <span className="ss-cell-guide-badge">↳ {guideName}</span>
             <button
               className="ss-cell-guide-remove"
               title="Remove guide assignment"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                void removeAllocationSession(guideInfo.allocationId);
+                void removeAllocationSession(guideAllocationId);
               }}
             >
               ×
