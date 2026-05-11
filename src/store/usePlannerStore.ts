@@ -594,8 +594,18 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   // ── Task management ─────────────────────────────────────────────────────────
 
   async addTask(task) {
-    const newTask: TaskItem = { name: generateId("local"), ...task };
-    const nextWeek = { ...get().week, tasks: [...get().week.tasks, newTask] };
+    const { week } = get();
+    const tasks = week.tasks;
+    // Inherit color from existing task of same customer, then insert after that customer's last row
+    const existingCustomerTask = tasks.find((t) => t.customerName === task.customerName && !t.parentTask);
+    const color = existingCustomerTask?.color ?? task.color;
+    const newTask: TaskItem = { name: generateId("local"), ...task, color };
+    const lastIdx = tasks.reduce((idx, t, i) => (t.customerName === task.customerName ? i : idx), -1);
+    const newTasks =
+      lastIdx >= 0
+        ? [...tasks.slice(0, lastIdx + 1), newTask, ...tasks.slice(lastIdx + 1)]
+        : [...tasks, newTask];
+    const nextWeek = { ...week, tasks: newTasks };
     await saveWeek(nextWeek);
     set({ week: nextWeek });
   },
@@ -680,7 +690,6 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   downloadPlan() {
     const { week } = get();
-    const rows: string[][] = [["Date", "Day", "Slot", "Guide", "Activity", "Customer", "Pax"]];
     const weekStartMs = new Date(week.weekStart).getTime();
     const sorted = [...week.allocations].sort(
       (a, b) =>
@@ -688,26 +697,94 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         a.slot.localeCompare(b.slot) ||
         a.instructor.localeCompare(b.instructor)
     );
+
+    // Group by dayIndex
+    const byDay = new Map<number, typeof sorted>();
     for (const alloc of sorted) {
-      const date = new Date(weekStartMs + alloc.dayIndex * 86400000);
-      const dateStr = date.toISOString().slice(0, 10);
-      const dayStr = date.toLocaleDateString("en-GB", { weekday: "short" });
-      const guide =
-        week.instructors.find((i) => i.name === alloc.instructor)?.instructorName ?? alloc.instructor;
-      const task = alloc.taskName ? week.tasks.find((t) => t.name === alloc.taskName) : null;
-      const pax = task?.noOfPeople?.toString() ?? "";
-      rows.push([dateStr, dayStr, alloc.slot, guide, alloc.subject, alloc.customerName, pax]);
+      const arr = byDay.get(alloc.dayIndex) ?? [];
+      arr.push(alloc);
+      byDay.set(alloc.dayIndex, arr);
     }
-    const csv = rows
-      .map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `plan-${week.weekStart}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+
+    const dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+    let tableRows = "";
+    let rowParity = 0;
+    for (const [dayIndex, allocs] of [...byDay.entries()].sort((a, b) => a[0] - b[0])) {
+      const date = new Date(weekStartMs + dayIndex * 86400000);
+      const dayLabel = `${dayNames[date.getDay()]}, ${monthNames[date.getMonth()]} ${date.getDate()} ${date.getFullYear()}`;
+      tableRows += `<tr class="day-header"><td colspan="6">${dayLabel}</td></tr>`;
+      for (const alloc of allocs) {
+        const guide = week.instructors.find((i) => i.name === alloc.instructor)?.instructorName ?? alloc.instructor;
+        const task = alloc.taskName ? week.tasks.find((t) => t.name === alloc.taskName) : null;
+        const pax = task?.noOfPeople != null ? `${task.noOfPeople} pax` : "";
+        const dotColor = alloc.color ?? "#888";
+        tableRows += `
+          <tr class="${rowParity % 2 === 0 ? "row-even" : "row-odd"}">
+            <td class="slot-cell">${alloc.slot}</td>
+            <td><span class="dot" style="background:${dotColor}"></span>${alloc.subject}</td>
+            <td>${alloc.customerName}</td>
+            <td>${pax}</td>
+            <td class="guide-cell">${guide}</td>
+          </tr>`;
+        rowParity++;
+      }
+    }
+
+    if (!tableRows) {
+      tableRows = `<tr><td colspan="6" style="text-align:center;color:#999;padding:2rem">No allocations for this week.</td></tr>`;
+    }
+
+    const weekEnd = new Date(weekStartMs + 6 * 86400000);
+    const weekLabel = `${monthNames[new Date(weekStartMs).getMonth()]} ${new Date(weekStartMs).getDate()} – ${monthNames[weekEnd.getMonth()]} ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Guide Allocation Plan · ${weekLabel}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #1a1a1a; padding: 24px; }
+  h1 { font-size: 15pt; margin-bottom: 2px; }
+  .subtitle { font-size: 9pt; color: #666; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1a3a5c; color: #fff; padding: 6px 8px; text-align: left; font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e8e8e8; vertical-align: middle; font-size: 9.5pt; }
+  tr.day-header td { background: #e8f0fe; color: #1a3a5c; font-weight: 700; font-size: 9pt; padding: 5px 8px; border-top: 2px solid #1a3a5c; letter-spacing: .02em; }
+  tr.row-odd td { background: #fafafa; }
+  .slot-cell { font-weight: 700; font-size: 8.5pt; color: #555; width: 36px; }
+  .guide-cell { font-weight: 600; color: #1a3a5c; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; flex-shrink: 0; }
+  @media print {
+    body { padding: 12px; }
+    @page { margin: 1cm; size: A4; }
+  }
+</style>
+</head>
+<body>
+<h1>Guide Allocation Plan</h1>
+<p class="subtitle">Week of ${weekLabel} &nbsp;·&nbsp; Generated ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+<table>
+  <thead><tr>
+    <th style="width:42px">Slot</th>
+    <th>Activity</th>
+    <th>Customer</th>
+    <th style="width:60px">Pax</th>
+    <th>Guide</th>
+  </tr></thead>
+  <tbody>${tableRows}</tbody>
+</table>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
   },
 
   // ── Selection ───────────────────────────────────────────────────────────────

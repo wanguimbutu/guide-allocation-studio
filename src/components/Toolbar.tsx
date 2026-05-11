@@ -71,7 +71,7 @@ export function Toolbar() {
           </button>
           <button onClick={downloadPlan}>
             <Download size={16} />
-            Download plan
+            Print / PDF
           </button>
           <button className="accent" onClick={() => void submitWeek()}>
             Submit week
