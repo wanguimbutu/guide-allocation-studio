@@ -9,7 +9,12 @@ import {
   saveConfig,
   saveWeek
 } from "../lib/db";
-import { fetchWeek, flushPendingAction } from "../lib/erpnext";
+import {
+  fetchWeek,
+  flushPendingAction,
+  splitCustomerGroups as erpSplitGroups,
+  deleteCustomerGroupSplitting as erpDeleteGroupSplit
+} from "../lib/erpnext";
 import type {
   AllocationItem,
   ErpNextConfig,
@@ -68,13 +73,14 @@ interface PlannerState {
   clipboard: CellClipboard | null;
   config: ErpNextConfig | null;
   syncStatus: SyncStatus;
+  weeksToShow: 1 | 2 | 4;
   hydrate: () => Promise<void>;
   setConfig: (config: ErpNextConfig) => Promise<void>;
   loadWeek: (weekStart: string, forceRemote?: boolean) => Promise<void>;
   moveTask: (taskName: string, dateIso: string, slot: Slot) => Promise<void>;
   assignTask: (taskName: string, instructor: string, dateIso: string, slot: Slot) => Promise<void>;
   removeAllocation: (allocationId: string) => Promise<void>;
-  toggleBlackout: (instructor: string, dayIndex: number, slot: Slot) => Promise<void>;
+  toggleBlackout: (instructor: string, dateIso: string, slot: Slot) => Promise<void>;
   submitWeek: () => Promise<void>;
   checkedTasks: Record<string, boolean>;
   frozenTasks: Record<string, boolean>;
@@ -85,6 +91,8 @@ interface PlannerState {
   toggleTaskFrozen: (taskName: string) => void;
   setGuideSlotPref: (instructor: string, pref: "AM" | "PM" | "Both") => void;
   removeAllocationSession: (allocationId: string) => Promise<void>;
+  splitCustomerGroups: (customerName: string, totalPeople: number, numberOfGroups: number) => Promise<void>;
+  deleteCustomerGroupSplitting: (customerName: string) => Promise<void>;
   downloadPlan: () => void;
   setSelectionAnchor: (section: "activity" | "guide", row: number, col: number) => void;
   extendSelection: (section: "activity" | "guide", row: number, col: number) => void;
@@ -95,6 +103,7 @@ interface PlannerState {
   deleteSelection: () => Promise<void>;
   clearClipboard: () => void;
   syncPending: () => Promise<void>;
+  setWeeksToShow: (n: 1 | 2 | 4) => Promise<void>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -223,6 +232,72 @@ function buildActivityClipboard(
   };
 }
 
+// ── Multi-week merge helper ───────────────────────────────────────────────────
+
+function mergeWeeksForView(primary: PlannerWeek, extras: PlannerWeek[]): PlannerWeek {
+  if (extras.length === 0) return primary;
+
+  // Deduplicate tasks (first occurrence wins)
+  const seenTasks = new Set<string>();
+  const mergedTasks: typeof primary.tasks = [];
+  for (const week of [primary, ...extras]) {
+    for (const task of week.tasks) {
+      if (!seenTasks.has(task.name)) {
+        seenTasks.add(task.name);
+        mergedTasks.push(task);
+      }
+    }
+  }
+
+  // Deduplicate instructors (first occurrence wins, then sort by position)
+  const seenInstructors = new Set<string>();
+  const mergedInstructors: typeof primary.instructors = [];
+  for (const week of [primary, ...extras]) {
+    for (const instructor of week.instructors) {
+      if (!seenInstructors.has(instructor.name)) {
+        seenInstructors.add(instructor.name);
+        mergedInstructors.push(instructor);
+      }
+    }
+  }
+  mergedInstructors.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
+  // Merge allocations with remapped global dayIndex
+  const mergedAllocations: typeof primary.allocations = [];
+  for (let i = 0; i < [primary, ...extras].length; i++) {
+    const week = [primary, ...extras][i];
+    for (const alloc of week.allocations) {
+      mergedAllocations.push({ ...alloc, dayIndex: alloc.dayIndex + i * 7 });
+    }
+  }
+
+  // Merge blackouts with remapped keys
+  const mergedBlackouts: PlannerWeek["blackouts"] = {};
+  for (let i = 0; i < [primary, ...extras].length; i++) {
+    const week = [primary, ...extras][i];
+    for (const [instructor, slots] of Object.entries(week.blackouts)) {
+      if (!mergedBlackouts[instructor]) mergedBlackouts[instructor] = {};
+      for (const [key, val] of Object.entries(slots)) {
+        // key is like "3_AM" — remap dayIndex part
+        const underscoreIdx = key.indexOf("_");
+        const localDay = parseInt(key.slice(0, underscoreIdx), 10);
+        const slotPart = key.slice(underscoreIdx); // "_AM" or "_PM"
+        const globalDay = localDay + i * 7;
+        mergedBlackouts[instructor][`${globalDay}${slotPart}`] = val;
+      }
+    }
+  }
+
+  return {
+    weekStart: primary.weekStart,
+    weekEnd: extras.at(-1)?.weekEnd ?? primary.weekEnd,
+    tasks: mergedTasks,
+    instructors: mergedInstructors,
+    allocations: mergedAllocations,
+    blackouts: mergedBlackouts
+  };
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const usePlannerStore = create<PlannerState>((set, get) => ({
@@ -231,6 +306,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   selection: null,
   clipboard: null,
   config: null,
+  weeksToShow: 1,
   checkedTasks: {},
   frozenTasks: {},
   guideSlotPrefs: {},
@@ -306,6 +382,18 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         week: remoteWeek,
         syncStatus: { ...s.syncStatus, lastError: undefined }
       }));
+
+      const ws = get().weeksToShow;
+      if (ws > 1 && config && navigator.onLine) {
+        const extras: PlannerWeek[] = [];
+        for (let i = 1; i < ws; i++) {
+          const extraStart = new Date(new Date(weekStart).getTime() + i * 7 * 86400000).toISOString().slice(0, 10);
+          try { extras.push(await fetchWeek(config, extraStart)); }
+          catch { extras.push({ ...remoteWeek, weekStart: extraStart, allocations: [], tasks: [], blackouts: {} }); }
+        }
+        const merged = mergeWeeksForView(remoteWeek, extras);
+        set((s) => ({ week: merged, syncStatus: { ...s.syncStatus, lastError: undefined } }));
+      }
     } catch (error) {
       set((s) => ({
         syncStatus: {
@@ -343,7 +431,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     };
 
     const config = get().config;
-    if (config && navigator.onLine) {
+    if (config && navigator.onLine && get().weeksToShow === 1) {
       const ok = await tryFlushAndRefresh(config, action, get().week.weekStart, set);
       if (!ok) {
         await queueAction(action);
@@ -377,7 +465,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...get().week,
       allocations: [...get().week.allocations, optimistic]
     };
-    await saveWeek(nextWeek);
+    if (get().weeksToShow === 1) await saveWeek(nextWeek);
     set({ week: nextWeek });
 
     const action: PendingAction = {
@@ -388,7 +476,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     };
 
     const config = get().config;
-    if (config && navigator.onLine) {
+    if (config && navigator.onLine && get().weeksToShow === 1) {
       const ok = await tryFlushAndRefresh(config, action, get().week.weekStart, set);
       if (!ok) {
         await queueAction(action);
@@ -414,7 +502,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...get().week,
       allocations: get().week.allocations.filter((item) => item.allocationId !== allocationId)
     };
-    await saveWeek(nextWeek);
+    if (get().weeksToShow === 1) await saveWeek(nextWeek);
     set({ week: nextWeek });
 
     const action: PendingAction = {
@@ -425,7 +513,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     };
 
     const config = get().config;
-    if (config && navigator.onLine) {
+    if (config && navigator.onLine && get().weeksToShow === 1) {
       const ok = await tryFlushAndRefresh(config, action, get().week.weekStart, set);
       if (!ok) {
         await queueAction(action);
@@ -437,8 +525,17 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     }
   },
 
-  async toggleBlackout(instructor, dayIndex, slot) {
-    const blackoutKey = `${dayIndex}_${slot}`;
+  async toggleBlackout(instructor, dateIso, slot) {
+    const globalDayIndex = Math.round(
+      (new Date(dateIso).getTime() - new Date(get().week.weekStart).getTime()) / 86400000
+    );
+    const weekIndex = Math.floor(globalDayIndex / 7);
+    const localDayIndex = globalDayIndex % 7;
+    const weekStart = new Date(new Date(get().week.weekStart).getTime() + weekIndex * 7 * 86400000)
+      .toISOString()
+      .slice(0, 10);
+
+    const blackoutKey = `${globalDayIndex}_${slot}`;
     const instructorBlackouts = { ...(get().week.blackouts[instructor] ?? {}) };
     if (instructorBlackouts[blackoutKey]) {
       delete instructorBlackouts[blackoutKey];
@@ -450,18 +547,18 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...get().week,
       blackouts: { ...get().week.blackouts, [instructor]: instructorBlackouts }
     };
-    await saveWeek(nextWeek);
+    if (get().weeksToShow === 1) await saveWeek(nextWeek);
     set({ week: nextWeek });
 
     const action: PendingAction = {
       id: generateId("blackout"),
       type: "bulk-blackout",
-      payload: { instructor, week_start_date: get().week.weekStart, slots: [{ dayIndex, slot }] },
+      payload: { instructor, week_start_date: weekStart, slots: [{ dayIndex: localDayIndex, slot }] },
       createdAt: Date.now()
     };
 
     const config = get().config;
-    if (config && navigator.onLine) {
+    if (config && navigator.onLine && get().weeksToShow === 1) {
       const ok = await tryFlushAndRefresh(config, action, get().week.weekStart, set);
       if (!ok) {
         await queueAction(action);
@@ -565,6 +662,20 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     set((s) => ({
       syncStatus: { ...s.syncStatus, pendingCount: s.syncStatus.pendingCount + toRemove.length }
     }));
+  },
+
+  async splitCustomerGroups(customerName, totalPeople, numberOfGroups) {
+    const { config, week } = get();
+    if (!config) return;
+    await erpSplitGroups(config, customerName, totalPeople, numberOfGroups, week.weekStart);
+    await get().loadWeek(week.weekStart, true);
+  },
+
+  async deleteCustomerGroupSplitting(customerName) {
+    const { config, week } = get();
+    if (!config) return;
+    await erpDeleteGroupSplit(config, customerName, week.weekStart);
+    await get().loadWeek(week.weekStart, true);
   },
 
   downloadPlan() {
@@ -787,19 +898,29 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         await get().removeAllocation(alloc.allocationId);
       }
     } else {
-      // For activity section: remove all guide allocations linked to selected tasks
-      const taskNamesInRange = new Set(
-        week.tasks.slice(minRow, maxRow + 1).map((t) => t.name)
-      );
-      const toRemove = week.allocations.filter((a) => taskNamesInRange.has(a.taskName ?? ""));
-      for (const alloc of toRemove) {
-        await get().removeAllocation(alloc.allocationId);
+      // For activity section: delete the tasks themselves
+      const weekStartMs = new Date(week.weekStart).getTime();
+      const tasksToDelete = week.tasks.slice(minRow, maxRow + 1).filter((task) => {
+        for (let c = minCol; c <= maxCol; c++) {
+          const dayIndex = Math.floor(c / 2);
+          const dayIso = new Date(weekStartMs + dayIndex * 86400000).toISOString().slice(0, 10);
+          if (taskActiveOnDay(task, dayIso)) return true;
+        }
+        return false;
+      });
+      for (const task of tasksToDelete) {
+        await get().removeTask(task.name);
       }
     }
   },
 
   clearClipboard() {
     set({ clipboard: null });
+  },
+
+  async setWeeksToShow(n) {
+    set({ weeksToShow: n });
+    await get().loadWeek(get().week.weekStart, true);
   },
 
   // ── Sync ────────────────────────────────────────────────────────────────────

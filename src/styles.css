@@ -1137,6 +1137,144 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 /* ── Frozen customer cell ─────────────────────────────────── */
 .ss-cell--frozen { cursor: default !important; }
 
+/* ── Week boundary ─────────────────────────────────── */
+.ss-day-head--week-boundary {
+  border-left: 3px solid var(--border-dark) !important;
+}
+.ss-cell.ss-week-boundary-col {
+  border-left: 2px solid var(--border-dark);
+}
+.ss-week-label {
+  font-size: .58rem;
+  font-weight: 700;
+  color: var(--accent-2);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  position: absolute;
+  top: 2px;
+  left: 4px;
+}
+
+/* ── Vertical week block ───────────────────────────── */
+.ss-week-block {
+  border-bottom: 3px solid var(--border-dark);
+}
+.ss-week-block:last-child { border-bottom: none; }
+
+.ss-week-block-header {
+  padding: .4rem .8rem;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  background: #f0f4ff;
+  border-bottom: 1px solid var(--border);
+  color: #3b55a0;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+.ss-week-block-range {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-soft);
+}
+
+/* ── Pinned activity bar ───────────────────────────── */
+.ss-pinned-bar {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .45rem .85rem;
+  background: #fffbea;
+  border-bottom: 2px solid #f0c040;
+  font-size: .76rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.ss-pinned-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ss-pinned-info {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  font-weight: 600;
+}
+.ss-pinned-subject {
+  font-weight: 400;
+  color: var(--text-soft);
+}
+.ss-pinned-pax {
+  font-size: .68rem;
+  background: rgba(0,0,0,.07);
+  border-radius: 10px;
+  padding: .1rem .35rem;
+}
+.ss-pinned-weeks {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.ss-pinned-week-group {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  flex-wrap: wrap;
+}
+.ss-pinned-wk-tag {
+  font-size: .64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  background: #e6c400;
+  color: #5a4200;
+  padding: .1rem .3rem;
+  border-radius: 4px;
+}
+.ss-pinned-alloc {
+  font-size: .72rem;
+  background: rgba(0,0,0,.06);
+  border-radius: 4px;
+  padding: .1rem .35rem;
+  white-space: nowrap;
+}
+.ss-pinned-empty {
+  font-size: .7rem;
+  color: var(--text-soft);
+  font-style: italic;
+}
+.ss-pinned-close {
+  margin-left: auto;
+  font-size: .9rem;
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,.1);
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ss-pinned-close:hover { background: rgba(0,0,0,.2); }
+
+/* ── Pinned task label highlight ───────────────────── */
+.ss-task-label--pinned {
+  background: #fffbea !important;
+  box-shadow: inset 2px 0 0 #f0c040;
+  cursor: pointer;
+}
+
 /* ── Ping result ──────────────────────────────────────── */
 .ping-result {
   margin: 0;
@@ -1147,3 +1285,104 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 }
 .ping-result.ok   { background: rgba(47,133,90,.1); color: var(--success); }
 .ping-result.fail { background: rgba(192,57,43,.1); color: var(--danger); word-break: break-all; }
+
+/* ── Group split row ───────────────────────────────── */
+.ss-task-label--group-row {
+  background: #f8f6ff !important;
+  border-left-style: dashed !important;
+  padding-left: .5rem;
+}
+.ss-group-row-inner {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .15rem 0;
+}
+.ss-group-prefix {
+  font-size: .8rem;
+  color: #888;
+  flex-shrink: 0;
+  margin-left: .3rem;
+}
+
+/* ── Split / Manage groups buttons ────────────────── */
+.ss-split-btn {
+  font-size: .62rem;
+  font-weight: 700;
+  padding: .1rem .3rem;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid #4a90d9;
+  background: #e8f2fd;
+  color: #1a5fa8;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.ss-split-btn:hover { background: #c8e0f8; }
+.ss-split-btn--manage {
+  border-color: #9c6ee0;
+  background: #f0eaff;
+  color: #5a2d9b;
+}
+.ss-split-btn--manage:hover { background: #e0d5ff; }
+
+/* ── Group split modal ─────────────────────────────── */
+.ss-group-modal {
+  width: 360px;
+}
+.ss-modal-title em {
+  font-style: normal;
+  font-weight: 700;
+}
+.ss-modal-desc {
+  font-size: .8rem;
+  color: var(--text-soft);
+  margin: .4rem 0 .9rem;
+  line-height: 1.4;
+}
+.ss-modal-label {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--text-body);
+  margin-bottom: 1rem;
+}
+.ss-modal-input {
+  border: 1px solid var(--border-dark);
+  border-radius: 5px;
+  padding: .35rem .5rem;
+  font-size: .85rem;
+  width: 100%;
+}
+.ss-modal-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ss-modal-footer {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+}
+.ss-modal-btn {
+  padding: .35rem .75rem;
+  border-radius: 5px;
+  border: 1px solid var(--border-dark);
+  background: #fff;
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ss-modal-btn:disabled { opacity: .55; cursor: default; }
+.ss-modal-btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.ss-modal-btn--primary:hover:not(:disabled) { background: #1557b0; }
+.ss-modal-btn--danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.ss-modal-btn--danger:hover:not(:disabled) { background: #a93226; }

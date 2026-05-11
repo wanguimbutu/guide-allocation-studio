@@ -19,7 +19,11 @@ const METHODS = {
   bulkBlackouts:
     "tours_and_safaris.tours_and_safaris.page.guide_allocation.guide_allocation.bulk_toggle_blackouts",
   submitWeek:
-    "tours_and_safaris.tours_and_safaris.page.guide_allocation.guide_allocation.submit_week_allocations"
+    "tours_and_safaris.tours_and_safaris.page.guide_allocation.guide_allocation.submit_week_allocations",
+  splitGroups:
+    "tours_and_safaris.tours_and_safaris.page.guide_allocation.guide_allocation.split_customer_groups",
+  deleteGroupSplit:
+    "tours_and_safaris.tours_and_safaris.page.guide_allocation.guide_allocation.delete_customer_group_splitting"
 } as const;
 
 function getHeaders(config: ErpNextConfig) {
@@ -185,6 +189,33 @@ export async function pingServer(config: ErpNextConfig): Promise<string> {
   }
   const data = (await response.json()) as { message?: string };
   return data.message ?? "ok";
+}
+
+export async function splitCustomerGroups(
+  config: ErpNextConfig,
+  customerName: string,
+  totalPeople: number,
+  numberOfGroups: number,
+  weekStart: string
+): Promise<{ success: boolean; message?: string }> {
+  return callMethod(config, METHODS.splitGroups, {
+    customer_name: customerName,
+    total_people: totalPeople,
+    number_of_groups: numberOfGroups,
+    week_start_date: weekStart,
+    split_tasks: true
+  });
+}
+
+export async function deleteCustomerGroupSplitting(
+  config: ErpNextConfig,
+  customerName: string,
+  weekStart: string
+): Promise<{ success: boolean; message?: string }> {
+  return callMethod(config, METHODS.deleteGroupSplit, {
+    customer_name: customerName,
+    week_start_date: weekStart
+  });
 }
 
 export async function fetchWeek(config: ErpNextConfig, weekStart: string) {

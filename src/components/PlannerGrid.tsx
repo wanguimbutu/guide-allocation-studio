@@ -10,7 +10,6 @@ import {
 } from "@dnd-kit/core";
 import { format } from "date-fns";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { buildWeekDays } from "../lib/date";
 import { usePlannerStore } from "../store/usePlannerStore";
 import type { Slot, TaskItem } from "../types";
 import { AddActivityModal } from "./AddActivityModal";
@@ -185,6 +184,7 @@ function CustomerCell({
 function GuideCell({
   instructor,
   dayIndex,
+  dateIso,
   slot,
   rowIndex,
   isOddRow,
@@ -194,6 +194,7 @@ function GuideCell({
 }: {
   instructor: string;
   dayIndex: number;
+  dateIso: string;
   slot: Slot;
   rowIndex: number;
   isOddRow: boolean;
@@ -313,7 +314,7 @@ function GuideCell({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            void toggleBlackout(instructor, dayIndex, slot);
+            void toggleBlackout(instructor, dateIso, slot);
           }}
         >
           {isBlackout ? "↺" : "⊘"}
@@ -373,7 +374,78 @@ export function PlannerGrid() {
   const toggleTaskFrozen = usePlannerStore((state) => state.toggleTaskFrozen);
   const setGuideSlotPref = usePlannerStore((state) => state.setGuideSlotPref);
 
-  const days = week.weekStart ? buildWeekDays(week.weekStart) : [];
+  const splitCustomerGroups = usePlannerStore((state) => state.splitCustomerGroups);
+  const deleteCustomerGroupSplitting = usePlannerStore((state) => state.deleteCustomerGroupSplitting);
+
+  const weeksToShow = usePlannerStore((state) => state.weeksToShow);
+  const setWeeksToShow = usePlannerStore((state) => state.setWeeksToShow);
+
+  const [zoom, setZoom] = useState(100);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((prev) => Math.max(30, Math.min(100, prev + (e.deltaY < 0 ? 5 : -5))));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  useEffect(() => {
+    const tier = zoom >= 80 ? 1 : zoom >= 50 ? 2 : 4;
+    if (tier !== weeksToShow) setWeeksToShow(tier as 1 | 2 | 4);
+  }, [zoom, weeksToShow, setWeeksToShow]);
+
+  const days = useMemo(() => {
+    if (!week.weekStart) return [];
+    return Array.from({ length: 7 * weeksToShow }, (_, i) => {
+      const d = new Date(new Date(week.weekStart).getTime() + i * 86400000);
+      return {
+        index: i,
+        iso: d.toISOString().slice(0, 10),
+        label: format(d, "EEE"),
+        isToday: d.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10),
+        isWeekBoundary: i > 0 && i % 7 === 0
+      };
+    });
+  }, [week.weekStart, weeksToShow]);
+
+  // ── Group split modal state ───────────────────────────────────────────────────
+  interface GroupModal {
+    mode: "split" | "manage";
+    customerName: string;
+    totalPeople: number;
+    groupCount: number; // existing groups count (for manage mode)
+  }
+  const [groupModal, setGroupModal] = useState<GroupModal | null>(null);
+  const [groupCount, setGroupCount] = useState(2);
+  const [groupSplitting, setGroupSplitting] = useState(false);
+
+  // ── Flat display list: parent tasks + their group subtasks in order ───────────
+  const displayTasks = useMemo(() => {
+    const parents = week.tasks.filter((t) => !t.parentTask);
+    const subtaskMap = new Map<string, typeof week.tasks>();
+    for (const t of week.tasks) {
+      if (t.parentTask) {
+        const arr = subtaskMap.get(t.parentTask) ?? [];
+        arr.push(t);
+        subtaskMap.set(t.parentTask, arr);
+      }
+    }
+    const flat: Array<{ task: (typeof week.tasks)[number]; isGroup: boolean }> = [];
+    for (const parent of parents) {
+      flat.push({ task: parent, isGroup: false });
+      for (const sub of subtaskMap.get(parent.name) ?? []) {
+        flat.push({ task: sub, isGroup: true });
+      }
+    }
+    return flat;
+  }, [week.tasks]);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -469,10 +541,57 @@ export function PlannerGrid() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const slotCount = days.length * SLOTS.length; // 14
+  const [pinnedTask, setPinnedTask] = useState<string | null>(null);
+  const pinnedTaskObj = pinnedTask ? week.tasks.find((t) => t.name === pinnedTask) ?? null : null;
+
+  // Always 7 days wide — weeks stack vertically
+  const slotCount = 7 * SLOTS.length; // 14
   const gridTemplateColumns = `160px repeat(${slotCount}, minmax(96px, 1fr))`;
 
   return (
+    <>
+    {pinnedTaskObj && (
+      <div className="ss-pinned-bar">
+        <span className="ss-pinned-dot" style={{ background: pinnedTaskObj.color }} />
+        <div className="ss-pinned-info">
+          <strong>{pinnedTaskObj.customerName}</strong>
+          <span className="ss-pinned-subject">{pinnedTaskObj.subject}</span>
+          {pinnedTaskObj.noOfPeople != null && (
+            <span className="ss-pinned-pax">{pinnedTaskObj.noOfPeople} pax</span>
+          )}
+        </div>
+        <div className="ss-pinned-weeks">
+          {Array.from({ length: weeksToShow }, (_, wi) => {
+            const blockDays = days.slice(wi * 7, (wi + 1) * 7);
+            const allocs = blockDays.flatMap((day) =>
+              SLOTS.flatMap((slot) => {
+                const alloc = week.allocations.find(
+                  (a) => a.taskName === pinnedTask && a.dayIndex === day.index && a.slot === slot
+                );
+                if (!alloc) return [];
+                const guide =
+                  week.instructors.find((i) => i.name === alloc.instructor)?.instructorName ??
+                  alloc.instructor;
+                return [{ key: `${day.iso}-${slot}`, label: `${day.label} ${slot}: ${guide}` }];
+              })
+            );
+            return (
+              <span key={wi} className="ss-pinned-week-group">
+                <span className="ss-pinned-wk-tag">Wk {wi + 1}</span>
+                {allocs.length === 0 ? (
+                  <span className="ss-pinned-empty">no allocations</span>
+                ) : (
+                  allocs.map((a) => (
+                    <span key={a.key} className="ss-pinned-alloc">{a.label}</span>
+                  ))
+                )}
+              </span>
+            );
+          })}
+        </div>
+        <button className="ss-pinned-close" onClick={() => setPinnedTask(null)}>×</button>
+      </div>
+    )}
     <DndContext
       sensors={sensors}
       onDragStart={(e) => {
@@ -502,207 +621,287 @@ export function PlannerGrid() {
         void assignTask(taskName, instructor, day.iso, slot);
       }}
     >
-      <div className="ss-wrapper">
-        <div className="ss-grid" style={{ gridTemplateColumns }}>
+      <div className="ss-wrapper" ref={wrapperRef}>
+        {Array.from({ length: weeksToShow }, (_, wi) => {
+          const blockDays = days.slice(wi * 7, (wi + 1) * 7);
+          const weekLabel =
+            blockDays.length > 0
+              ? `${format(new Date(blockDays[0].iso), "MMM d")} – ${format(new Date(blockDays[6].iso), "MMM d, yyyy")}`
+              : "";
 
-          {/* ── ROW 1: day headers ─────────────────────────── */}
-          <div className="ss-corner ss-corner--1">Activity / Guide</div>
-          {days.map((day) => (
-            <div
-              key={day.iso}
-              className={clsx("ss-day-head", { "ss-day-head--today": day.isToday })}
-            >
-              <strong>{day.label}</strong>
-              <small>{format(new Date(day.iso), "MMM d")}</small>
-            </div>
-          ))}
+          return (
+            <div key={wi} className="ss-week-block">
+              {weeksToShow > 1 && (
+                <div className="ss-week-block-header">
+                  Week {wi + 1} <span className="ss-week-block-range">· {weekLabel}</span>
+                </div>
+              )}
+              <div className="ss-grid" style={{ gridTemplateColumns, zoom: zoom / 100 }}>
 
-          {/* ── ROW 2: AM / PM slot sub-headers ────────────── */}
-          <div className="ss-corner ss-corner--2" />
-          {days.flatMap((day) =>
-            SLOTS.map((slot) => (
-              <div
-                key={`${day.iso}-${slot}`}
-                className={clsx("ss-slot-head", { "ss-slot-head--today": day.isToday })}
-              >
-                {slot}
-              </div>
-            ))
-          )}
+                {/* ── Day headers ─────────────────────────── */}
+                <div className="ss-corner ss-corner--1">Activity / Guide</div>
+                {blockDays.map((day) => (
+                  <div
+                    key={day.iso}
+                    className={clsx("ss-day-head", { "ss-day-head--today": day.isToday })}
+                    style={{ gridColumn: "span 2" }}
+                  >
+                    <strong>{day.label}</strong>
+                    <small>{format(new Date(day.iso), "MMM d")}</small>
+                  </div>
+                ))}
 
-          {/* ── CUSTOMER / ACTIVITY SECTION ─────────────────── */}
-          <SectionRow
-            label="Activities"
-            colCount={slotCount}
-            onAdd={() => setShowAddModal(true)}
-          />
+                {/* ── Slot sub-headers ────────────────────── */}
+                <div className="ss-corner ss-corner--2" />
+                {blockDays.flatMap((day) =>
+                  SLOTS.map((slot) => (
+                    <div
+                      key={`${day.iso}-${slot}`}
+                      className={clsx("ss-slot-head", { "ss-slot-head--today": day.isToday })}
+                    >
+                      {slot}
+                    </div>
+                  ))
+                )}
 
-          {week.tasks.length === 0 && (
-            <div className="ss-empty" style={{ gridColumn: "1 / -1" }}>
-              No activities for this week.
-            </div>
-          )}
+                {/* ── Activity section ────────────────────── */}
+                <SectionRow
+                  label="Activities"
+                  colCount={slotCount}
+                  onAdd={wi === 0 ? () => setShowAddModal(true) : undefined}
+                />
 
-          {week.tasks.flatMap((task, rowIndex) => [
-            /* ── Task row ─────────────────────────────────── */
-            <div key={task.name} style={{ display: "contents" }}>
-              <div
-                className={clsx("ss-guide-cell ss-task-label", {
-                  "ss-guide-cell--odd": rowIndex % 2 === 1,
-                  "ss-task-label--checked": checkedTasks[task.name],
-                  "ss-task-label--frozen": frozenTasks[task.name]
+                {displayTasks.length === 0 && wi === 0 && (
+                  <div className="ss-empty" style={{ gridColumn: "1 / -1" }}>
+                    No activities for this week.
+                  </div>
+                )}
+
+                {displayTasks.flatMap(({ task, isGroup }, rowIndex) => {
+                  const groups: Array<{ group_name: string; people_count: number }> =
+                    task.customerGroups ? (() => {
+                      try { return JSON.parse(task.customerGroups!); } catch { return []; }
+                    })() : [];
+
+                  return [
+                    <div key={task.name} style={{ display: "contents" }}>
+                      <div
+                        className={clsx("ss-guide-cell ss-task-label", {
+                          "ss-guide-cell--odd": rowIndex % 2 === 1,
+                          "ss-task-label--checked": checkedTasks[task.name],
+                          "ss-task-label--frozen": frozenTasks[task.name],
+                          "ss-task-label--pinned": pinnedTask === task.name,
+                          "ss-task-label--group-row": isGroup
+                        })}
+                        style={{ borderLeft: `4px solid ${task.color}` }}
+                        onClick={() =>
+                          setPinnedTask(pinnedTask === task.name ? null : task.name)
+                        }
+                      >
+                        {isGroup ? (
+                          <div className="ss-task-label-inner ss-group-row-inner">
+                            <span className="ss-group-prefix">├─</span>
+                            <div className="ss-task-label-text">
+                              <strong>{task.subject}</strong>
+                              {task.noOfPeople != null && (
+                                <small className="ss-pax">{task.noOfPeople} pax</small>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="ss-task-label-inner">
+                            <input
+                              type="checkbox"
+                              className="ss-task-check"
+                              checked={Boolean(checkedTasks[task.name])}
+                              onChange={() => toggleTaskChecked(task.name)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              title="Mark as done"
+                            />
+                            <div className="ss-task-label-text">
+                              <strong>{task.customerName}</strong>
+                              <small>{task.subject}</small>
+                              {task.noOfPeople != null && (
+                                <small className="ss-pax">{task.noOfPeople} pax</small>
+                              )}
+                            </div>
+                            {groups.length > 0 ? (
+                              <button
+                                className="ss-split-btn ss-split-btn--manage"
+                                title="Manage group split"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setGroupCount(groups.length);
+                                  setGroupModal({
+                                    mode: "manage",
+                                    customerName: task.customerName,
+                                    totalPeople: task.noOfPeople ?? 2,
+                                    groupCount: groups.length
+                                  });
+                                }}
+                              >
+                                Groups ({groups.length})
+                              </button>
+                            ) : (task.noOfPeople ?? 0) > 1 ? (
+                              <button
+                                className="ss-split-btn"
+                                title="Split into groups"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setGroupCount(2);
+                                  setGroupModal({
+                                    mode: "split",
+                                    customerName: task.customerName,
+                                    totalPeople: task.noOfPeople!,
+                                    groupCount: 0
+                                  });
+                                }}
+                              >
+                                Split
+                              </button>
+                            ) : null}
+                            <button
+                              className="ss-task-freeze"
+                              title={frozenTasks[task.name] ? "Unfreeze" : "Freeze (prevent drag)"}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleTaskFrozen(task.name);
+                              }}
+                            >
+                              {frozenTasks[task.name] ? "🔓" : "🔒"}
+                            </button>
+                            <button
+                              className="ss-task-remove"
+                              title="Remove activity"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void removeTask(task.name);
+                              }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {blockDays.flatMap((day) =>
+                        SLOTS.map((slot) => (
+                          <CustomerCell
+                            key={`${task.name}-${day.index}-${slot}`}
+                            task={task}
+                            dayIso={day.iso}
+                            dayIndex={day.index}
+                            slot={slot}
+                            rowIndex={rowIndex}
+                            onCellMouseDown={handleCellMouseDown}
+                            onCellMouseEnter={handleCellMouseEnter}
+                            onPickActivity={handlePickActivity}
+                          />
+                        ))
+                      )}
+                    </div>,
+
+                    ...(!isGroup ? [
+                      <div key={`ghost-${task.name}`} style={{ display: "contents" }}>
+                        <div
+                          className="ss-guide-cell ss-task-ghost"
+                          style={{ borderLeft: `4px solid ${task.color}33` }}
+                        >
+                          <span className="ss-ghost-customer">{task.customerName}</span>
+                          <span className="ss-ghost-hint">+ add activity</span>
+                        </div>
+                        {blockDays.flatMap((day) =>
+                          SLOTS.map((slot) => (
+                            <div
+                              key={`ghost-${task.name}-${day.index}-${slot}`}
+                              className="ss-cell ss-cell--ghost"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setPickerTarget({
+                                  dayIso: day.iso,
+                                  slot,
+                                  anchor: { x: rect.left, y: rect.bottom },
+                                  presetCustomer: task.customerName
+                                });
+                              }}
+                            >
+                              <span className="ss-cell-add-hint">+</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ] : [])
+                  ];
                 })}
-                style={{ borderLeft: `4px solid ${task.color}` }}
-              >
-                <div className="ss-task-label-inner">
-                  <input
-                    type="checkbox"
-                    className="ss-task-check"
-                    checked={Boolean(checkedTasks[task.name])}
-                    onChange={() => toggleTaskChecked(task.name)}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                    title="Mark as done"
-                  />
-                  <div className="ss-task-label-text">
-                    <strong>{task.customerName}</strong>
-                    <small>{task.subject}</small>
-                    {task.noOfPeople != null && (
-                      <small className="ss-pax">{task.noOfPeople} pax</small>
+
+                {/* ── Guide section ───────────────────────── */}
+                <SectionRow label="Guides" colCount={slotCount} />
+
+                {week.instructors.length === 0 && wi === 0 && (
+                  <div className="ss-empty" style={{ gridColumn: "1 / -1" }}>
+                    No guide data — save your connection and refresh.
+                  </div>
+                )}
+
+                {week.instructors.map((instructor, rowIndex) => (
+                  <div key={instructor.name} style={{ display: "contents" }}>
+                    <div
+                      className={clsx("ss-guide-cell", {
+                        "ss-guide-cell--odd": rowIndex % 2 === 1
+                      })}
+                    >
+                      <div className="ss-guide-label-top">
+                        <strong>{instructor.instructorName}</strong>
+                        <button
+                          className={clsx("ss-slot-pref-btn", {
+                            "ss-slot-pref-btn--active":
+                              (guideSlotPrefs[instructor.name] ?? "Both") !== "Both"
+                          })}
+                          title="Cycle slot preference: AM+PM → AM only → PM only"
+                          onClick={() => {
+                            const pref = guideSlotPrefs[instructor.name] ?? "Both";
+                            const next =
+                              pref === "Both" ? "AM" : pref === "AM" ? "PM" : "Both";
+                            setGuideSlotPref(instructor.name, next);
+                          }}
+                        >
+                          {(guideSlotPrefs[instructor.name] ?? "Both") === "Both"
+                            ? "AM+PM"
+                            : guideSlotPrefs[instructor.name]}
+                        </button>
+                      </div>
+                      {instructor.qualifications && (
+                        <small>{instructor.qualifications.split("|")[0]?.split(":")[0]}</small>
+                      )}
+                    </div>
+                    {blockDays.flatMap((day) =>
+                      SLOTS.map((slot) => (
+                        <GuideCell
+                          key={`${instructor.name}-${day.index}-${slot}`}
+                          instructor={instructor.name}
+                          dayIndex={day.index}
+                          dateIso={day.iso}
+                          slot={slot}
+                          rowIndex={rowIndex}
+                          isOddRow={rowIndex % 2 === 1}
+                          isToday={day.isToday}
+                          onCellMouseDown={handleCellMouseDown}
+                          onCellMouseEnter={handleCellMouseEnter}
+                        />
+                      ))
                     )}
                   </div>
-                  <button
-                    className="ss-task-freeze"
-                    title={frozenTasks[task.name] ? "Unfreeze" : "Freeze (prevent drag)"}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleTaskFrozen(task.name);
-                    }}
-                  >
-                    {frozenTasks[task.name] ? "🔓" : "🔒"}
-                  </button>
-                  <button
-                    className="ss-task-remove"
-                    title="Remove activity"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void removeTask(task.name);
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
+                ))}
               </div>
-              {days.flatMap((day) =>
-                SLOTS.map((slot) => (
-                  <CustomerCell
-                    key={`${task.name}-${day.index}-${slot}`}
-                    task={task}
-                    dayIso={day.iso}
-                    dayIndex={day.index}
-                    slot={slot}
-                    rowIndex={rowIndex}
-                    onCellMouseDown={handleCellMouseDown}
-                    onCellMouseEnter={handleCellMouseEnter}
-                    onPickActivity={handlePickActivity}
-                  />
-                ))
-              )}
-            </div>,
-
-            /* ── Per-customer ghost row ──────────────────── */
-            <div key={`ghost-${task.name}`} style={{ display: "contents" }}>
-              <div
-                className="ss-guide-cell ss-task-ghost"
-                style={{ borderLeft: `4px solid ${task.color}33` }}
-              >
-                <span className="ss-ghost-customer">{task.customerName}</span>
-                <span className="ss-ghost-hint">+ add activity</span>
-              </div>
-              {days.flatMap((day) =>
-                SLOTS.map((slot) => (
-                  <div
-                    key={`ghost-${task.name}-${day.index}-${slot}`}
-                    className="ss-cell ss-cell--ghost"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                      setPickerTarget({
-                        dayIso: day.iso,
-                        slot,
-                        anchor: { x: rect.left, y: rect.bottom },
-                        presetCustomer: task.customerName
-                      });
-                    }}
-                  >
-                    <span className="ss-cell-add-hint">+</span>
-                  </div>
-                ))
-              )}
             </div>
-          ])}
-
-          {/* ── GUIDE / INSTRUCTOR SECTION ───────────────────── */}
-          <SectionRow label="Guides" colCount={slotCount} />
-
-          {week.instructors.length === 0 && (
-            <div className="ss-empty" style={{ gridColumn: "1 / -1" }}>
-              No guide data — save your connection and refresh.
-            </div>
-          )}
-
-          {week.instructors.map((instructor, rowIndex) => (
-            <div key={instructor.name} style={{ display: "contents" }}>
-              <div
-                className={clsx("ss-guide-cell", {
-                  "ss-guide-cell--odd": rowIndex % 2 === 1
-                })}
-              >
-                <div className="ss-guide-label-top">
-                  <strong>{instructor.instructorName}</strong>
-                  <button
-                    className={clsx("ss-slot-pref-btn", {
-                      "ss-slot-pref-btn--active": (guideSlotPrefs[instructor.name] ?? "Both") !== "Both"
-                    })}
-                    title="Cycle slot preference: AM+PM → AM only → PM only"
-                    onClick={() => {
-                      const pref = guideSlotPrefs[instructor.name] ?? "Both";
-                      const next =
-                        pref === "Both" ? "AM" : pref === "AM" ? "PM" : "Both";
-                      setGuideSlotPref(instructor.name, next);
-                    }}
-                  >
-                    {(guideSlotPrefs[instructor.name] ?? "Both") === "Both"
-                      ? "AM+PM"
-                      : guideSlotPrefs[instructor.name]}
-                  </button>
-                </div>
-                {instructor.qualifications && (
-                  <small>{instructor.qualifications.split("|")[0]?.split(":")[0]}</small>
-                )}
-              </div>
-
-              {days.flatMap((day) =>
-                SLOTS.map((slot) => (
-                  <GuideCell
-                    key={`${instructor.name}-${day.index}-${slot}`}
-                    instructor={instructor.name}
-                    dayIndex={day.index}
-                    slot={slot}
-                    rowIndex={rowIndex}
-                    isOddRow={rowIndex % 2 === 1}
-                    isToday={day.isToday}
-                    onCellMouseDown={handleCellMouseDown}
-                    onCellMouseEnter={handleCellMouseEnter}
-                  />
-                ))
-              )}
-            </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
       <DragOverlay dropAnimation={null}>
@@ -760,5 +959,113 @@ export function PlannerGrid() {
         />
       )}
     </DndContext>
+
+    {/* ── Group split modal ─────────────────────────────────────────────── */}
+    {groupModal && (
+      <div className="ss-modal-backdrop" onClick={() => !groupSplitting && setGroupModal(null)}>
+        <div className="ss-modal ss-group-modal" onClick={(e) => e.stopPropagation()}>
+          {groupModal.mode === "split" ? (
+            <>
+              <h3 className="ss-modal-title">
+                Split <em>{groupModal.customerName}</em> into groups
+              </h3>
+              <p className="ss-modal-desc">
+                {groupModal.totalPeople} people total. Each group gets a separate row so you can assign different guides.
+              </p>
+              <label className="ss-modal-label">
+                Number of groups
+                <input
+                  type="number"
+                  className="ss-modal-input"
+                  min={2}
+                  max={groupModal.totalPeople}
+                  value={groupCount}
+                  onChange={(e) => setGroupCount(Math.max(2, Math.min(groupModal.totalPeople, Number(e.target.value))))}
+                  autoFocus
+                />
+              </label>
+              <div className="ss-modal-footer">
+                <button className="ss-modal-btn" onClick={() => setGroupModal(null)} disabled={groupSplitting}>
+                  Cancel
+                </button>
+                <button
+                  className="ss-modal-btn ss-modal-btn--primary"
+                  disabled={groupSplitting}
+                  onClick={async () => {
+                    setGroupSplitting(true);
+                    try {
+                      await splitCustomerGroups(groupModal.customerName, groupModal.totalPeople, groupCount);
+                      setGroupModal(null);
+                    } finally {
+                      setGroupSplitting(false);
+                    }
+                  }}
+                >
+                  {groupSplitting ? "Splitting…" : `Split into ${groupCount} groups`}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="ss-modal-title">
+                Manage groups for <em>{groupModal.customerName}</em>
+              </h3>
+              <p className="ss-modal-desc">
+                {groupModal.groupCount} groups exist. You can redo the split with a different number or delete all groups.
+              </p>
+              <label className="ss-modal-label">
+                Number of groups (redo)
+                <input
+                  type="number"
+                  className="ss-modal-input"
+                  min={2}
+                  max={groupModal.totalPeople}
+                  value={groupCount}
+                  onChange={(e) => setGroupCount(Math.max(2, Math.min(groupModal.totalPeople, Number(e.target.value))))}
+                  autoFocus
+                />
+              </label>
+              <div className="ss-modal-footer">
+                <button
+                  className="ss-modal-btn ss-modal-btn--danger"
+                  disabled={groupSplitting}
+                  onClick={async () => {
+                    setGroupSplitting(true);
+                    try {
+                      await deleteCustomerGroupSplitting(groupModal.customerName);
+                      setGroupModal(null);
+                    } finally {
+                      setGroupSplitting(false);
+                    }
+                  }}
+                >
+                  {groupSplitting ? "Deleting…" : "Delete split"}
+                </button>
+                <button className="ss-modal-btn" onClick={() => setGroupModal(null)} disabled={groupSplitting}>
+                  Cancel
+                </button>
+                <button
+                  className="ss-modal-btn ss-modal-btn--primary"
+                  disabled={groupSplitting}
+                  onClick={async () => {
+                    setGroupSplitting(true);
+                    try {
+                      await deleteCustomerGroupSplitting(groupModal.customerName);
+                      await splitCustomerGroups(groupModal.customerName, groupModal.totalPeople, groupCount);
+                      setGroupModal(null);
+                    } finally {
+                      setGroupSplitting(false);
+                    }
+                  }}
+                >
+                  {groupSplitting ? "Working…" : `Redo as ${groupCount} groups`}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )}
+    </>
   );
 }
