@@ -1155,6 +1155,22 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   left: 4px;
 }
 
+/* ── Zoom level badge (bottom-right, like Google Sheets) ── */
+.ss-zoom-badge {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  z-index: 100;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 700;
+  padding: .2rem .55rem;
+  border-radius: 12px;
+  pointer-events: none;
+  letter-spacing: .04em;
+}
+
 /* ── Vertical week block ───────────────────────────── */
 .ss-week-block {
   border-bottom: 3px solid var(--border-dark);

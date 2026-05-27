@@ -73,7 +73,7 @@ interface PlannerState {
   clipboard: CellClipboard | null;
   config: ErpNextConfig | null;
   syncStatus: SyncStatus;
-  weeksToShow: 1 | 2 | 4;
+  weeksToShow: number;
   hydrate: () => Promise<void>;
   setConfig: (config: ErpNextConfig) => Promise<void>;
   loadWeek: (weekStart: string, forceRemote?: boolean) => Promise<void>;
@@ -103,7 +103,7 @@ interface PlannerState {
   deleteSelection: () => Promise<void>;
   clearClipboard: () => void;
   syncPending: () => Promise<void>;
-  setWeeksToShow: (n: 1 | 2 | 4) => Promise<void>;
+  setWeeksToShow: (n: number) => Promise<void>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -779,12 +779,13 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 </body>
 </html>`;
 
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); }, 400);
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    if (!win) { URL.revokeObjectURL(url); return; }
+    win.addEventListener("load", () => {
+      setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 200);
+    }, { once: true });
   },
 
   // ── Selection ───────────────────────────────────────────────────────────────
