@@ -380,10 +380,9 @@ export function PlannerGrid() {
   const weeksToShow = usePlannerStore((state) => state.weeksToShow);
   const setWeeksToShow = usePlannerStore((state) => state.setWeeksToShow);
 
-  // zoom: 20–100 (like Google Sheets / Excel 20%–100%)
+  // zoom: 15–100, 5% steps (like Google Sheets / Excel)
   const [zoom, setZoom] = useState(100);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  // Debounce timer ref so we only trigger a data reload once scrolling stops
   const zoomDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -392,16 +391,23 @@ export function PlannerGrid() {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
-      // 10% per notch — same feel as Google Sheets
-      const delta = e.deltaY < 0 ? 10 : -10;
-      setZoom((prev) => Math.max(20, Math.min(100, Math.round((prev + delta) / 10) * 10)));
+      // 5% per notch, down to 15% (≈7 weeks) for monthly view
+      const delta = e.deltaY < 0 ? 5 : -5;
+      setZoom((prev) => Math.max(15, Math.min(100, Math.round((prev + delta) / 5) * 5)));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Map zoom → weeks continuously (Excel formula: weeks = round(100/zoom))
-  // 100% → 1w, 50% → 2w, 33% → 3w, 25% → 4w, 20% → 5w
+  // Scale grid dimensions from zoom so position:sticky keeps working at all zoom levels
+  const factor = zoom / 100;
+  const dayHeadH = Math.max(18, Math.round(36 * factor));
+  const slotHeadH = Math.max(10, Math.round(26 * factor));
+  const cellH = Math.max(20, Math.round(52 * factor));
+  const cellW = Math.max(38, Math.round(96 * factor));
+  const labelW = Math.max(80, Math.round(160 * factor));
+
+  // Map zoom → weeks: 100%→1w, 50%→2w, 33%→3w, 25%→4w, 20%→5w, 15%→7w
   useEffect(() => {
     const target = Math.max(1, Math.min(8, Math.round(100 / zoom)));
     if (target === weeksToShow) return;
@@ -561,10 +567,11 @@ export function PlannerGrid() {
 
   // Always 7 days wide — weeks stack vertically
   const slotCount = 7 * SLOTS.length; // 14
-  const gridTemplateColumns = `160px repeat(${slotCount}, minmax(96px, 1fr))`;
+  const gridTemplateColumns = `${labelW}px repeat(${slotCount}, ${cellW}px)`;
 
   return (
-    <>
+    <div className="ss-planner-container">
+    {/* ── Frozen pane: stays above the scroll area, always visible ── */}
     {pinnedTaskObj && (
       <div className="ss-pinned-bar">
         <span className="ss-pinned-dot" style={{ background: pinnedTaskObj.color }} />
@@ -656,7 +663,7 @@ export function PlannerGrid() {
                   Week {wi + 1} <span className="ss-week-block-range">· {weekLabel}</span>
                 </div>
               )}
-              <div className="ss-grid" style={{ gridTemplateColumns, zoom: zoom / 100 }}>
+              <div className="ss-grid" style={{ gridTemplateColumns, '--day-head-h': `${dayHeadH}px`, '--slot-head-h': `${slotHeadH}px`, '--cell-h': `${cellH}px` } as React.CSSProperties}>
 
                 {/* ── Day headers ─────────────────────────── */}
                 <div className="ss-corner ss-corner--1">Activity / Guide</div>
@@ -1086,6 +1093,6 @@ export function PlannerGrid() {
         </div>
       </div>
     )}
-    </>
+    </div>
   );
 }
