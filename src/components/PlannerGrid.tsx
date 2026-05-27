@@ -567,7 +567,11 @@ export function PlannerGrid() {
 
   // Always 7 days wide — weeks stack vertically
   const slotCount = 7 * SLOTS.length; // 14
-  const gridTemplateColumns = `${labelW}px repeat(${slotCount}, ${cellW}px)`;
+  // At full zoom, let columns stretch to fill screen (like a normal spreadsheet).
+  // When zoomed out, use fixed pixel widths so the grid actually shrinks.
+  const gridTemplateColumns = zoom >= 100
+    ? `${labelW}px repeat(${slotCount}, minmax(${cellW}px, 1fr))`
+    : `${labelW}px repeat(${slotCount}, ${cellW}px)`;
 
   return (
     <div className="ss-planner-container">
