@@ -315,10 +315,10 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   align-items: center;
   justify-content: center;
   gap: .05rem;
-  font-size: .78rem;
+  font-size: var(--cell-font, .78rem);
 }
 .ss-day-head strong { font-weight: 700; }
-.ss-day-head small  { font-size: .68rem; color: var(--text-soft); }
+.ss-day-head small  { font-size: var(--cell-font-sm, .68rem); color: var(--text-soft); }
 .ss-day-head--today {
   background: #e8f0fe;
   color: #1a73e8;
@@ -338,7 +338,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: .68rem;
+  font-size: var(--cell-font-sm, .68rem);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .1em;
@@ -365,14 +365,14 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   gap: .1rem;
 }
 .ss-guide-cell strong {
-  font-size: .78rem;
+  font-size: var(--cell-font, .78rem);
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .ss-guide-cell small {
-  font-size: .68rem;
+  font-size: var(--cell-font-sm, .68rem);
   color: var(--text-soft);
   white-space: nowrap;
   overflow: hidden;
@@ -449,14 +449,14 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   gap: .1rem;
 }
 .ss-cell-activity {
-  font-size: .76rem;
+  font-size: var(--cell-font, .76rem);
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .ss-cell-customer {
-  font-size: .68rem;
+  font-size: var(--cell-font-sm, .68rem);
   opacity: .85;
   white-space: nowrap;
   overflow: hidden;
@@ -511,7 +511,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   align-items: center;
   justify-content: center;
   height: 100%;
-  font-size: .68rem;
+  font-size: var(--cell-font-sm, .68rem);
   font-weight: 700;
   color: #aaa;
   text-transform: uppercase;
@@ -744,7 +744,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 
 /* ── Guide badge inside customer cell ─────────────────── */
 .ss-cell-guide-badge {
-  font-size: .64rem;
+  font-size: var(--cell-font-sm, .64rem);
   font-weight: 600;
   opacity: .9;
   white-space: nowrap;
@@ -755,7 +755,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 
 /* ── Customer tag inside guide cell ───────────────────── */
 .ss-cell-customer-tag {
-  font-size: .68rem;
+  font-size: var(--cell-font-sm, .68rem);
   opacity: .85;
   white-space: nowrap;
   overflow: hidden;

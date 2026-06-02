@@ -399,14 +399,16 @@ export function PlannerGrid() {
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Zoom only shrinks ROW heights — columns always fill the full screen width.
-  // Smaller rows = each week takes less vertical space = multiple weeks visible at once.
+  // Zoom scales BOTH row heights AND fonts so content stays proportional (like real spreadsheet zoom).
+  // Columns always fill the full screen width; smaller rows let multiple weeks fit on screen.
   const factor = zoom / 100;
   const dayHeadH = Math.max(16, Math.round(36 * factor));
   const slotHeadH = Math.max(10, Math.round(26 * factor));
   const cellH = Math.max(18, Math.round(52 * factor));
-  // Section rows (ghost / section-label) also need to shrink
   const sectionRowH = Math.max(14, Math.round(28 * factor));
+  // Font sizes scale with zoom so text stays readable and fits inside smaller cells
+  const cellFont = `${Math.max(0.52, 0.76 * factor).toFixed(3)}rem`;
+  const cellFontSm = `${Math.max(0.48, 0.68 * factor).toFixed(3)}rem`;
 
   // Zoom → weeks: designed so first 5 notches (100→75%) triggers 2-week view
   // 100-80%: 1w  |  79-55%: 2w  |  54-40%: 3w  |  39-30%: 4w  |  <30%: 5-7w
@@ -675,7 +677,7 @@ export function PlannerGrid() {
                   Week {wi + 1} <span className="ss-week-block-range">· {weekLabel}</span>
                 </div>
               )}
-              <div className="ss-grid" style={{ gridTemplateColumns, '--day-head-h': `${dayHeadH}px`, '--slot-head-h': `${slotHeadH}px`, '--cell-h': `${cellH}px`, '--section-row-h': `${sectionRowH}px` } as React.CSSProperties}>
+              <div className="ss-grid" style={{ gridTemplateColumns, '--day-head-h': `${dayHeadH}px`, '--slot-head-h': `${slotHeadH}px`, '--cell-h': `${cellH}px`, '--section-row-h': `${sectionRowH}px`, '--cell-font': cellFont, '--cell-font-sm': cellFontSm } as React.CSSProperties}>
 
                 {/* ── Day headers ─────────────────────────── */}
                 <div className="ss-corner ss-corner--1">Activity / Guide</div>
