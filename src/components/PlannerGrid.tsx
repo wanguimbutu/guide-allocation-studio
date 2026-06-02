@@ -399,13 +399,14 @@ export function PlannerGrid() {
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Scale grid dimensions from zoom so position:sticky keeps working at all zoom levels
+  // Zoom only shrinks ROW heights — columns always fill the full screen width.
+  // Smaller rows = each week takes less vertical space = multiple weeks visible at once.
   const factor = zoom / 100;
-  const dayHeadH = Math.max(18, Math.round(36 * factor));
+  const dayHeadH = Math.max(16, Math.round(36 * factor));
   const slotHeadH = Math.max(10, Math.round(26 * factor));
-  const cellH = Math.max(20, Math.round(52 * factor));
-  const cellW = Math.max(38, Math.round(96 * factor));
-  const labelW = Math.max(80, Math.round(160 * factor));
+  const cellH = Math.max(18, Math.round(52 * factor));
+  // Section rows (ghost / section-label) also need to shrink
+  const sectionRowH = Math.max(14, Math.round(28 * factor));
 
   // Zoom → weeks: designed so first 5 notches (100→75%) triggers 2-week view
   // 100-80%: 1w  |  79-55%: 2w  |  54-40%: 3w  |  39-30%: 4w  |  <30%: 5-7w
@@ -577,10 +578,8 @@ export function PlannerGrid() {
 
   // Always 7 days wide — weeks stack vertically
   const slotCount = 7 * SLOTS.length; // 14
-  // At full zoom let columns stretch to fill screen; when zoomed out use fixed widths so the grid shrinks
-  const gridTemplateColumns = zoom >= 100
-    ? `${labelW}px repeat(${slotCount}, minmax(${cellW}px, 1fr))`
-    : `${labelW}px repeat(${slotCount}, ${cellW}px)`;
+  // Columns always fill the full screen; zoom only affects row heights
+  const gridTemplateColumns = `160px repeat(${slotCount}, minmax(96px, 1fr))`;
 
   return (
     <div className="ss-planner-container">
@@ -676,7 +675,7 @@ export function PlannerGrid() {
                   Week {wi + 1} <span className="ss-week-block-range">· {weekLabel}</span>
                 </div>
               )}
-              <div className="ss-grid" style={{ gridTemplateColumns, '--day-head-h': `${dayHeadH}px`, '--slot-head-h': `${slotHeadH}px`, '--cell-h': `${cellH}px` } as React.CSSProperties}>
+              <div className="ss-grid" style={{ gridTemplateColumns, '--day-head-h': `${dayHeadH}px`, '--slot-head-h': `${slotHeadH}px`, '--cell-h': `${cellH}px`, '--section-row-h': `${sectionRowH}px` } as React.CSSProperties}>
 
                 {/* ── Day headers ─────────────────────────── */}
                 <div className="ss-corner ss-corner--1">Activity / Guide</div>

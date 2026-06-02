@@ -695,7 +695,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   color: var(--text-soft);
   display: flex;
   align-items: center;
-  height: 28px;
+  height: var(--section-row-h, 28px);
 }
 
 .ss-section-fill {
@@ -703,7 +703,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   border-top: 2px solid var(--border-dark);
-  height: 28px;
+  height: var(--section-row-h, 28px);
 }
 
 /* ── Task label (left cell in Activities section) ─────── */
@@ -765,7 +765,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 /* ── Per-customer ghost row ───────────────────────────────── */
 .ss-task-ghost {
   background: #f6f8fa !important;
-  height: 28px !important;
+  height: var(--section-row-h, 28px) !important;
   padding: 0 .65rem !important;
   display: flex !important;
   flex-direction: row !important;
@@ -795,7 +795,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 28px;
+  height: var(--section-row-h, 28px);
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   position: relative;
