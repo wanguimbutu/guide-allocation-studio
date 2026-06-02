@@ -907,6 +907,18 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   width: 100%;
 }
 .picker-new:hover { background: rgba(21,71,52,.06); box-shadow: none; }
+.picker-divider {
+  padding: .25rem .7rem .15rem;
+  font-size: .64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-soft);
+  background: var(--bg-header);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.picker-row--local { background: #fafbfc; }
 
 /* ── Section label flex ───────────────────────────────────── */
 .ss-section-label { justify-content: space-between; }

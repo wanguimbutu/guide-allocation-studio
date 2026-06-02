@@ -292,7 +292,7 @@ function GuideCell({
           <span className="ss-cell-customer-tag">{alloc.customerName}</span>
           <button
             className="ss-cell-remove"
-            title="Remove (removes all sessions for this task on this day)"
+            title="Remove this slot allocation"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -407,15 +407,25 @@ export function PlannerGrid() {
   const cellW = Math.max(38, Math.round(96 * factor));
   const labelW = Math.max(80, Math.round(160 * factor));
 
-  // Map zoom → weeks: 100%→1w, 50%→2w, 33%→3w, 25%→4w, 20%→5w, 15%→7w
+  // Zoom → weeks: designed so first 5 notches (100→75%) triggers 2-week view
+  // 100-80%: 1w  |  79-55%: 2w  |  54-40%: 3w  |  39-30%: 4w  |  <30%: 5-7w
+  function zoomToWeeks(z: number) {
+    if (z >= 80) return 1;
+    if (z >= 55) return 2;
+    if (z >= 40) return 3;
+    if (z >= 30) return 4;
+    if (z >= 22) return 5;
+    if (z >= 18) return 6;
+    return 7;
+  }
+
   useEffect(() => {
-    const target = Math.max(1, Math.min(8, Math.round(100 / zoom)));
+    const target = zoomToWeeks(zoom);
     if (target === weeksToShow) return;
-    // Debounce: update visual immediately but defer the API load 600 ms
     if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current);
     zoomDebounceRef.current = setTimeout(() => {
       void setWeeksToShow(target);
-    }, 600);
+    }, 300);
     return () => {
       if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current);
     };
@@ -567,7 +577,10 @@ export function PlannerGrid() {
 
   // Always 7 days wide — weeks stack vertically
   const slotCount = 7 * SLOTS.length; // 14
-  const gridTemplateColumns = `${labelW}px repeat(${slotCount}, ${cellW}px)`;
+  // At full zoom let columns stretch to fill screen; when zoomed out use fixed widths so the grid shrinks
+  const gridTemplateColumns = zoom >= 100
+    ? `${labelW}px repeat(${slotCount}, minmax(${cellW}px, 1fr))`
+    : `${labelW}px repeat(${slotCount}, ${cellW}px)`;
 
   return (
     <div className="ss-planner-container">
@@ -950,6 +963,7 @@ export function PlannerGrid() {
         <ActivityPicker
           config={config}
           presetCustomer={pickerTarget.presetCustomer}
+          weekActivities={[...new Set(week.tasks.map((t) => t.subject))]}
           dayIso={pickerTarget.dayIso}
           slot={pickerTarget.slot}
           anchor={pickerTarget.anchor}

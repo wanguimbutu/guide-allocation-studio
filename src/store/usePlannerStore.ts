@@ -647,6 +647,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       (a) =>
         a.instructor === target.instructor &&
         a.dayIndex === target.dayIndex &&
+        a.slot === target.slot &&
         (target.taskName
           ? a.taskName === target.taskName
           : a.subject === target.subject && a.customerName === target.customerName)
