@@ -406,9 +406,13 @@ export function PlannerGrid() {
   const slotHeadH = Math.max(10, Math.round(26 * factor));
   const cellH = Math.max(18, Math.round(52 * factor));
   const sectionRowH = Math.max(14, Math.round(28 * factor));
-  // Font sizes scale with zoom so text stays readable and fits inside smaller cells
-  const cellFont = `${Math.max(0.52, 0.76 * factor).toFixed(3)}rem`;
-  const cellFontSm = `${Math.max(0.48, 0.68 * factor).toFixed(3)}rem`;
+  // Font sizes scale with zoom so text stays readable inside smaller cells
+  const cellFont = `${Math.max(0.48, 0.76 * factor).toFixed(3)}rem`;
+  const cellFontSm = `${Math.max(0.44, 0.68 * factor).toFixed(3)}rem`;
+  // Padding scales with zoom so multi-line content (customer name + activity) fits in shorter rows
+  const cellPadV = `${Math.max(0.08, 0.35 * factor).toFixed(3)}rem`;
+  // Button/badge heights scale so split/freeze buttons remain visible at lower zoom
+  const inlineBtnH = `${Math.max(10, Math.round(18 * factor))}px`;
 
   // Zoom → weeks: designed so first 5 notches (100→75%) triggers 2-week view
   // 100-80%: 1w  |  79-55%: 2w  |  54-40%: 3w  |  39-30%: 4w  |  <30%: 5-7w
@@ -677,7 +681,7 @@ export function PlannerGrid() {
                   Week {wi + 1} <span className="ss-week-block-range">· {weekLabel}</span>
                 </div>
               )}
-              <div className="ss-grid" style={{ gridTemplateColumns, '--day-head-h': `${dayHeadH}px`, '--slot-head-h': `${slotHeadH}px`, '--cell-h': `${cellH}px`, '--section-row-h': `${sectionRowH}px`, '--cell-font': cellFont, '--cell-font-sm': cellFontSm } as React.CSSProperties}>
+              <div className="ss-grid" style={{ gridTemplateColumns, '--day-head-h': `${dayHeadH}px`, '--slot-head-h': `${slotHeadH}px`, '--cell-h': `${cellH}px`, '--section-row-h': `${sectionRowH}px`, '--cell-font': cellFont, '--cell-font-sm': cellFontSm, '--cell-pad-v': cellPadV, '--inline-btn-h': inlineBtnH } as React.CSSProperties}>
 
                 {/* ── Day headers ─────────────────────────── */}
                 <div className="ss-corner ss-corner--1">Activity / Guide</div>

@@ -357,7 +357,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   background: #fff;
   border-right: 2px solid var(--border-dark);
   border-bottom: 1px solid var(--border);
-  padding: .35rem .65rem;
+  padding: var(--cell-pad-v, .35rem) .65rem;
   height: var(--cell-h);
   display: flex;
   flex-direction: column;
@@ -444,7 +444,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: .3rem .45rem;
+  padding: var(--cell-pad-v, .3rem) .45rem;
   height: 100%;
   gap: .1rem;
 }
@@ -957,19 +957,19 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 }
 .ss-task-check {
   flex-shrink: 0;
-  width: 13px;
-  height: 13px;
+  width: var(--inline-btn-h, 13px);
+  height: var(--inline-btn-h, 13px);
   cursor: pointer;
   accent-color: var(--accent);
 }
 .ss-task-freeze,
 .ss-task-remove {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--inline-btn-h, 16px);
+  height: var(--inline-btn-h, 16px);
   padding: 0;
   border-radius: 3px;
-  font-size: .72rem;
+  font-size: var(--cell-font-sm, .72rem);
   line-height: 1;
   border: none;
   background: rgba(0,0,0,.08);
@@ -1335,10 +1335,10 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 
 /* ── Split / Manage groups buttons ────────────────── */
 .ss-split-btn {
-  font-size: .62rem;
+  font-size: var(--cell-font-sm, .62rem);
   font-weight: 700;
   padding: .1rem .3rem;
-  height: 18px;
+  height: var(--inline-btn-h, 18px);
   border-radius: 4px;
   border: 1px solid #4a90d9;
   background: #e8f2fd;
