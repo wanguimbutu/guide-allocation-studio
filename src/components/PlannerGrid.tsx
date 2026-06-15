@@ -738,7 +738,11 @@ export function PlannerGrid() {
                           "ss-task-label--pinned": pinnedTask === task.name,
                           "ss-task-label--group-row": isGroup
                         })}
-                        style={{ borderLeft: `4px solid ${task.color}` }}
+                        style={{
+                          background: task.color,
+                          color: textOnColor(task.color),
+                          borderLeft: `4px solid rgba(0,0,0,0.2)`,
+                        }}
                         onClick={() =>
                           setPinnedTask(pinnedTask === task.name ? null : task.name)
                         }
