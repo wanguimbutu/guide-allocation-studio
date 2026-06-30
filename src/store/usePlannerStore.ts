@@ -85,11 +85,17 @@ interface PlannerState {
   checkedTasks: Record<string, boolean>;
   frozenTasks: Record<string, boolean>;
   guideSlotPrefs: Record<string, "AM" | "PM" | "Both">;
+  hiddenGuides: Record<string, boolean>;
+  hiddenGroupRows: Record<string, boolean>;
   addTask: (task: Omit<TaskItem, "name">) => Promise<void>;
   removeTask: (taskName: string) => Promise<void>;
   toggleTaskChecked: (taskName: string) => void;
   toggleTaskFrozen: (taskName: string) => void;
   setGuideSlotPref: (instructor: string, pref: "AM" | "PM" | "Both") => void;
+  toggleGuideHidden: (instructorName: string) => void;
+  toggleGroupRowHidden: (taskName: string) => void;
+  unhideAllGuides: () => void;
+  unhideAllGroupRows: () => void;
   removeAllocationSession: (allocationId: string) => Promise<void>;
   splitCustomerGroups: (customerName: string, totalPeople: number, numberOfGroups: number) => Promise<void>;
   deleteCustomerGroupSplitting: (customerName: string) => Promise<void>;
@@ -310,6 +316,8 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   checkedTasks: {},
   frozenTasks: {},
   guideSlotPrefs: {},
+  hiddenGuides: {},
+  hiddenGroupRows: {},
   syncStatus: {
     online: typeof navigator !== "undefined" ? navigator.onLine : true,
     syncing: false,
@@ -465,7 +473,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...get().week,
       allocations: [...get().week.allocations, optimistic]
     };
-    if (get().weeksToShow === 1) await saveWeek(nextWeek);
+    await saveWeek(nextWeek);
     set({ week: nextWeek });
 
     const action: PendingAction = {
@@ -502,13 +510,13 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...get().week,
       allocations: get().week.allocations.filter((item) => item.allocationId !== allocationId)
     };
-    if (get().weeksToShow === 1) await saveWeek(nextWeek);
+    await saveWeek(nextWeek);
     set({ week: nextWeek });
 
     const action: PendingAction = {
       id: generateId("remove-allocation"),
       type: "remove-allocation",
-      payload: { instructor: allocation.instructor, activity_date: activityDate, activity_name: allocation.subject },
+      payload: { instructor: allocation.instructor, activity_date: activityDate, activity_name: allocation.subject, slot: allocation.slot },
       createdAt: Date.now()
     };
 
@@ -547,7 +555,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...get().week,
       blackouts: { ...get().week.blackouts, [instructor]: instructorBlackouts }
     };
-    if (get().weeksToShow === 1) await saveWeek(nextWeek);
+    await saveWeek(nextWeek);
     set({ week: nextWeek });
 
     const action: PendingAction = {
@@ -616,10 +624,12 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     const nextWeek = {
       ...get().week,
       tasks: get().week.tasks.filter((t) => t.name !== taskName),
-      allocations: get().week.allocations.filter(
-        (a) => a.taskName !== taskName &&
-          !(a.subject === task.subject && a.customerName === task.customerName)
-      )
+      allocations: get().week.allocations.filter((a) => {
+        if (a.taskName === taskName) return false;
+        // For non-group parent tasks, also remove legacy allocations (no taskName) for same subject+customer
+        if (!task.parentTask && !a.taskName && a.subject === task.subject && a.customerName === task.customerName) return false;
+        return true;
+      })
     };
     await saveWeek(nextWeek);
     set({ week: nextWeek });
@@ -637,6 +647,22 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   setGuideSlotPref(instructor, pref) {
     set((s) => ({ guideSlotPrefs: { ...s.guideSlotPrefs, [instructor]: pref } }));
+  },
+
+  toggleGuideHidden(instructorName) {
+    set((s) => ({ hiddenGuides: { ...s.hiddenGuides, [instructorName]: !s.hiddenGuides[instructorName] } }));
+  },
+
+  toggleGroupRowHidden(taskName) {
+    set((s) => ({ hiddenGroupRows: { ...s.hiddenGroupRows, [taskName]: !s.hiddenGroupRows[taskName] } }));
+  },
+
+  unhideAllGuides() {
+    set({ hiddenGuides: {} });
+  },
+
+  unhideAllGroupRows() {
+    set({ hiddenGroupRows: {} });
   },
 
   async removeAllocationSession(allocationId) {
@@ -677,15 +703,21 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   async splitCustomerGroups(customerName, totalPeople, numberOfGroups) {
     const { config, week } = get();
-    if (!config) return;
-    await erpSplitGroups(config, customerName, totalPeople, numberOfGroups, week.weekStart);
+    if (!config) throw new Error("Not connected to ERPNext");
+    const result = await erpSplitGroups(config, customerName, totalPeople, numberOfGroups, week.weekStart);
+    if (result && result.success === false) {
+      throw new Error(result.message ?? "Split failed");
+    }
     await get().loadWeek(week.weekStart, true);
   },
 
   async deleteCustomerGroupSplitting(customerName) {
     const { config, week } = get();
-    if (!config) return;
-    await erpDeleteGroupSplit(config, customerName, week.weekStart);
+    if (!config) throw new Error("Not connected to ERPNext");
+    const result = await erpDeleteGroupSplit(config, customerName, week.weekStart);
+    if (result && result.success === false) {
+      throw new Error(result.message ?? "Delete split failed");
+    }
     await get().loadWeek(week.weekStart, true);
   },
 

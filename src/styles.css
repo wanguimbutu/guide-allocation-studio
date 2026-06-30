@@ -991,6 +991,58 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 .ss-task-freeze:hover { background: rgba(221,107,32,.15) !important; color: var(--accent-2); box-shadow: none; }
 .ss-task-remove:hover { background: rgba(192,57,43,.2) !important; color: var(--danger); box-shadow: none; }
 
+/* ── Hide row button (Excel-style row hiding) ─────────────── */
+.ss-row-hide-btn {
+  flex-shrink: 0;
+  width: var(--inline-btn-h, 16px);
+  height: var(--inline-btn-h, 16px);
+  padding: 0;
+  border-radius: 3px;
+  font-size: var(--cell-font-sm, .68rem);
+  line-height: 1;
+  border: none;
+  background: rgba(0,0,0,.18);
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ss-guide-cell.ss-task-label:hover .ss-row-hide-btn,
+.ss-guide-cell:hover .ss-row-hide-btn { opacity: 1; }
+.ss-row-hide-btn:hover { background: rgba(0,0,0,.32) !important; box-shadow: none; }
+
+/* ── Hidden row collapse (Excel-style hide row) ───────────── */
+.ss-cell.ss-row-hidden,
+.ss-guide-cell.ss-row-hidden {
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Section header: unhide control ───────────────────────── */
+.ss-section-unhide {
+  background: transparent;
+  border: 1px solid rgba(192,57,43,.25);
+  color: var(--danger, #c0392b);
+  font-size: .64rem;
+  font-weight: 700;
+  padding: .1rem .4rem;
+  height: 20px;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ss-section-unhide:hover { background: rgba(192,57,43,.08); box-shadow: none; }
+
 /* ── Modal ────────────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;
@@ -1392,6 +1444,15 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
   width: 100%;
 }
 .ss-modal-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ss-modal-error {
+  font-size: .78rem;
+  color: #b42318;
+  background: #fef3f2;
+  border: 1px solid #fda29b;
+  border-radius: 5px;
+  padding: .4rem .55rem;
+  margin: -.4rem 0 .9rem;
+}
 .ss-modal-footer {
   display: flex;
   gap: .5rem;

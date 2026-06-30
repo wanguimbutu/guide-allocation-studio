@@ -40,6 +40,7 @@ function CustomerCell({
   dayIndex,
   slot,
   rowIndex,
+  hidden,
   onCellMouseDown,
   onCellMouseEnter,
   onPickActivity
@@ -49,6 +50,7 @@ function CustomerCell({
   dayIndex: number;
   slot: Slot;
   rowIndex: number;
+  hidden?: boolean;
   onCellMouseDown: (e: React.MouseEvent, section: "activity" | "guide", row: number, col: number) => void;
   onCellMouseEnter: (section: "activity" | "guide", row: number, col: number) => void;
   onPickActivity: (dayIso: string, slot: Slot, customerName: string, anchor: { x: number; y: number }) => void;
@@ -74,7 +76,7 @@ function CustomerCell({
   });
 
   const isFrozen = usePlannerStore((state) => Boolean(state.frozenTasks[task.name]));
-  const removeAllocationSession = usePlannerStore((state) => state.removeAllocationSession);
+  const removeAllocation = usePlannerStore((state) => state.removeAllocation);
 
   const isInSelection = usePlannerStore((state) => {
     if (!state.selection || state.selection.anchor.section !== "activity") return false;
@@ -110,7 +112,7 @@ function CustomerCell({
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: draggableId,
     data: { type: "task", taskName: task.name },
-    disabled: !active || isFrozen
+    disabled: !active || isFrozen || hidden
   });
 
   if (!active) {
@@ -120,7 +122,8 @@ function CustomerCell({
           "ss-cell--in-selection": isInSelection,
           "ss-cell--selection-anchor": isAnchor && !clipboardVisual,
           "ss-cell--copy-source": clipboardVisual === "copy",
-          "ss-cell--cut-source": clipboardVisual === "cut"
+          "ss-cell--cut-source": clipboardVisual === "cut",
+          "ss-row-hidden": hidden
         })}
         onMouseDown={(e) => onCellMouseDown(e, "activity", rowIndex, colIndex)}
         onMouseEnter={() => onCellMouseEnter("activity", rowIndex, colIndex)}
@@ -147,7 +150,8 @@ function CustomerCell({
         "ss-cell--in-selection": isInSelection,
         "ss-cell--selection-anchor": isAnchor && !clipboardVisual,
         "ss-cell--copy-source": clipboardVisual === "copy",
-        "ss-cell--cut-source": clipboardVisual === "cut"
+        "ss-cell--cut-source": clipboardVisual === "cut",
+        "ss-row-hidden": hidden
       })}
       style={style}
       onMouseDown={(e) => onCellMouseDown(e, "activity", rowIndex, colIndex)}
@@ -167,7 +171,7 @@ function CustomerCell({
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                void removeAllocationSession(guideAllocationId);
+                void removeAllocation(guideAllocationId);
               }}
             >
               ×
@@ -189,6 +193,7 @@ function GuideCell({
   rowIndex,
   isOddRow,
   isToday,
+  hidden,
   onCellMouseDown,
   onCellMouseEnter
 }: {
@@ -199,6 +204,7 @@ function GuideCell({
   rowIndex: number;
   isOddRow: boolean;
   isToday: boolean;
+  hidden?: boolean;
   onCellMouseDown: (e: React.MouseEvent, section: "activity" | "guide", row: number, col: number) => void;
   onCellMouseEnter: (section: "activity" | "guide", row: number, col: number) => void;
 }) {
@@ -251,13 +257,13 @@ function GuideCell({
     return null;
   });
 
-  const removeAllocationSession = usePlannerStore((state) => state.removeAllocationSession);
+  const removeAllocation = usePlannerStore((state) => state.removeAllocation);
   const toggleBlackout = usePlannerStore((state) => state.toggleBlackout);
 
   const { setNodeRef, isOver } = useDroppable({
     id: `cell:${instructor}-${dayIndex}-${slot}`,
     data: { type: "cell", instructor, dayIndex, slot },
-    disabled: isRestricted || isBlackout
+    disabled: isRestricted || isBlackout || hidden
   });
 
   const style: CSSProperties = {};
@@ -280,7 +286,8 @@ function GuideCell({
         "ss-cell--in-selection": isInSelection,
         "ss-cell--selection-anchor": isAnchor && !clipboardVisual,
         "ss-cell--copy-source": clipboardVisual === "copy",
-        "ss-cell--cut-source": clipboardVisual === "cut"
+        "ss-cell--cut-source": clipboardVisual === "cut",
+        "ss-row-hidden": hidden
       })}
       style={style}
       onMouseDown={(e) => onCellMouseDown(e, "guide", rowIndex, colIndex)}
@@ -296,7 +303,7 @@ function GuideCell({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              void removeAllocationSession(alloc.allocationId);
+              void removeAllocation(alloc.allocationId);
             }}
           >
             ×
@@ -329,11 +336,15 @@ function GuideCell({
 function SectionRow({
   label,
   colCount,
-  onAdd
+  onAdd,
+  hiddenCount,
+  onUnhideAll
 }: {
   label: string;
   colCount: number;
   onAdd?: () => void;
+  hiddenCount?: number;
+  onUnhideAll?: () => void;
 }) {
   return (
     <>
@@ -342,6 +353,11 @@ function SectionRow({
         {onAdd && (
           <button className="ss-section-add" onClick={onAdd} type="button">
             + Add
+          </button>
+        )}
+        {Boolean(hiddenCount) && onUnhideAll && (
+          <button className="ss-section-unhide" onClick={onUnhideAll} type="button">
+            {hiddenCount} hidden · Show all
           </button>
         )}
       </div>
@@ -373,6 +389,12 @@ export function PlannerGrid() {
   const toggleTaskChecked = usePlannerStore((state) => state.toggleTaskChecked);
   const toggleTaskFrozen = usePlannerStore((state) => state.toggleTaskFrozen);
   const setGuideSlotPref = usePlannerStore((state) => state.setGuideSlotPref);
+  const hiddenGuides = usePlannerStore((state) => state.hiddenGuides);
+  const hiddenGroupRows = usePlannerStore((state) => state.hiddenGroupRows);
+  const toggleGuideHidden = usePlannerStore((state) => state.toggleGuideHidden);
+  const toggleGroupRowHidden = usePlannerStore((state) => state.toggleGroupRowHidden);
+  const unhideAllGuides = usePlannerStore((state) => state.unhideAllGuides);
+  const unhideAllGroupRows = usePlannerStore((state) => state.unhideAllGroupRows);
 
   const splitCustomerGroups = usePlannerStore((state) => state.splitCustomerGroups);
   const deleteCustomerGroupSplitting = usePlannerStore((state) => state.deleteCustomerGroupSplitting);
@@ -462,6 +484,7 @@ export function PlannerGrid() {
   const [groupModal, setGroupModal] = useState<GroupModal | null>(null);
   const [groupCount, setGroupCount] = useState(2);
   const [groupSplitting, setGroupSplitting] = useState(false);
+  const [splitError, setSplitError] = useState<string | null>(null);
 
   // ── Flat display list: parent tasks + their group subtasks in order ───────────
   const displayTasks = useMemo(() => {
@@ -709,11 +732,15 @@ export function PlannerGrid() {
                   ))
                 )}
 
-                {/* ── Activity section ────────────────────── */}
+                {(() => {
+                  const activitySection = (
+                    <>
                 <SectionRow
                   label="Activities"
                   colCount={slotCount}
                   onAdd={wi === 0 ? () => setShowAddModal(true) : undefined}
+                  hiddenCount={wi === 0 ? Object.values(hiddenGroupRows).filter(Boolean).length : 0}
+                  onUnhideAll={wi === 0 ? unhideAllGroupRows : undefined}
                 />
 
                 {displayTasks.length === 0 && wi === 0 && (
@@ -736,7 +763,8 @@ export function PlannerGrid() {
                           "ss-task-label--checked": checkedTasks[task.name],
                           "ss-task-label--frozen": frozenTasks[task.name],
                           "ss-task-label--pinned": pinnedTask === task.name,
-                          "ss-task-label--group-row": isGroup
+                          "ss-task-label--group-row": isGroup,
+                          "ss-row-hidden": isGroup && hiddenGroupRows[task.name]
                         })}
                         style={{
                           background: task.color,
@@ -756,6 +784,28 @@ export function PlannerGrid() {
                                 <small className="ss-pax">{task.noOfPeople} pax</small>
                               )}
                             </div>
+                            <button
+                              className="ss-row-hide-btn"
+                              title="Hide this group's row"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleGroupRowHidden(task.name);
+                              }}
+                            >
+                              🙈
+                            </button>
+                            <button
+                              className="ss-task-remove"
+                              title="Remove this group's activity"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void removeTask(task.name);
+                              }}
+                            >
+                              ×
+                            </button>
                           </div>
                         ) : (
                           <div className="ss-task-label-inner">
@@ -783,6 +833,7 @@ export function PlannerGrid() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setGroupCount(groups.length);
+                                  setSplitError(null);
                                   setGroupModal({
                                     mode: "manage",
                                     customerName: task.customerName,
@@ -793,7 +844,7 @@ export function PlannerGrid() {
                               >
                                 Groups ({groups.length})
                               </button>
-                            ) : (task.noOfPeople ?? 0) > 1 ? (
+                            ) : (
                               <button
                                 className="ss-split-btn"
                                 title="Split into groups"
@@ -801,17 +852,18 @@ export function PlannerGrid() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setGroupCount(2);
+                                  setSplitError(null);
                                   setGroupModal({
                                     mode: "split",
                                     customerName: task.customerName,
-                                    totalPeople: task.noOfPeople!,
+                                    totalPeople: task.noOfPeople ?? 0,
                                     groupCount: 0
                                   });
                                 }}
                               >
                                 Split
                               </button>
-                            ) : null}
+                            )}
                             <button
                               className="ss-task-freeze"
                               title={frozenTasks[task.name] ? "Unfreeze" : "Freeze (prevent drag)"}
@@ -846,6 +898,7 @@ export function PlannerGrid() {
                             dayIndex={day.index}
                             slot={slot}
                             rowIndex={rowIndex}
+                            hidden={isGroup && Boolean(hiddenGroupRows[task.name])}
                             onCellMouseDown={handleCellMouseDown}
                             onCellMouseEnter={handleCellMouseEnter}
                             onPickActivity={handlePickActivity}
@@ -888,9 +941,16 @@ export function PlannerGrid() {
                     ] : [])
                   ];
                 })}
-
-                {/* ── Guide section ───────────────────────── */}
-                <SectionRow label="Guides" colCount={slotCount} />
+                    </>
+                  );
+                  const guideSection = (
+                    <>
+                <SectionRow
+                  label="Guides"
+                  colCount={slotCount}
+                  hiddenCount={wi === 0 ? Object.values(hiddenGuides).filter(Boolean).length : 0}
+                  onUnhideAll={wi === 0 ? unhideAllGuides : undefined}
+                />
 
                 {week.instructors.length === 0 && wi === 0 && (
                   <div className="ss-empty" style={{ gridColumn: "1 / -1" }}>
@@ -902,7 +962,8 @@ export function PlannerGrid() {
                   <div key={instructor.name} style={{ display: "contents" }}>
                     <div
                       className={clsx("ss-guide-cell", {
-                        "ss-guide-cell--odd": rowIndex % 2 === 1
+                        "ss-guide-cell--odd": rowIndex % 2 === 1,
+                        "ss-row-hidden": hiddenGuides[instructor.name]
                       })}
                     >
                       <div className="ss-guide-label-top">
@@ -924,6 +985,13 @@ export function PlannerGrid() {
                             ? "AM+PM"
                             : guideSlotPrefs[instructor.name]}
                         </button>
+                        <button
+                          className="ss-row-hide-btn"
+                          title="Hide this guide's row"
+                          onClick={() => toggleGuideHidden(instructor.name)}
+                        >
+                          🙈
+                        </button>
                       </div>
                       {instructor.qualifications && (
                         <small>{instructor.qualifications.split("|")[0]?.split(":")[0]}</small>
@@ -934,6 +1002,7 @@ export function PlannerGrid() {
                         <GuideCell
                           key={`${instructor.name}-${day.index}-${slot}`}
                           instructor={instructor.name}
+                          hidden={Boolean(hiddenGuides[instructor.name])}
                           dayIndex={day.index}
                           dateIso={day.iso}
                           slot={slot}
@@ -947,6 +1016,20 @@ export function PlannerGrid() {
                     )}
                   </div>
                 ))}
+                    </>
+                  );
+                  return weeksToShow > 1 ? (
+                    <>
+                      {guideSection}
+                      {activitySection}
+                    </>
+                  ) : (
+                    <>
+                      {activitySection}
+                      {guideSection}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           );
@@ -1020,7 +1103,10 @@ export function PlannerGrid() {
                 Split <em>{groupModal.customerName}</em> into groups
               </h3>
               <p className="ss-modal-desc">
-                {groupModal.totalPeople} people total. Each group gets a separate row so you can assign different guides.
+                {groupModal.totalPeople > 0
+                  ? `${groupModal.totalPeople} people total. `
+                  : ""}
+                Each group gets a separate row so you can assign different guides.
               </p>
               <label className="ss-modal-label">
                 Number of groups
@@ -1028,12 +1114,17 @@ export function PlannerGrid() {
                   type="number"
                   className="ss-modal-input"
                   min={2}
-                  max={groupModal.totalPeople}
+                  max={groupModal.totalPeople > 2 ? groupModal.totalPeople : undefined}
                   value={groupCount}
-                  onChange={(e) => setGroupCount(Math.max(2, Math.min(groupModal.totalPeople, Number(e.target.value))))}
+                  onChange={(e) => {
+                    const raw = Number(e.target.value);
+                    const capped = groupModal.totalPeople > 2 ? Math.min(groupModal.totalPeople, raw) : raw;
+                    setGroupCount(Math.max(2, capped));
+                  }}
                   autoFocus
                 />
               </label>
+              {splitError && <p className="ss-modal-error">{splitError}</p>}
               <div className="ss-modal-footer">
                 <button className="ss-modal-btn" onClick={() => setGroupModal(null)} disabled={groupSplitting}>
                   Cancel
@@ -1043,9 +1134,12 @@ export function PlannerGrid() {
                   disabled={groupSplitting}
                   onClick={async () => {
                     setGroupSplitting(true);
+                    setSplitError(null);
                     try {
                       await splitCustomerGroups(groupModal.customerName, groupModal.totalPeople, groupCount);
                       setGroupModal(null);
+                    } catch (err) {
+                      setSplitError(err instanceof Error ? err.message : "Split failed");
                     } finally {
                       setGroupSplitting(false);
                     }
@@ -1069,21 +1163,29 @@ export function PlannerGrid() {
                   type="number"
                   className="ss-modal-input"
                   min={2}
-                  max={groupModal.totalPeople}
+                  max={groupModal.totalPeople > 2 ? groupModal.totalPeople : undefined}
                   value={groupCount}
-                  onChange={(e) => setGroupCount(Math.max(2, Math.min(groupModal.totalPeople, Number(e.target.value))))}
+                  onChange={(e) => {
+                    const raw = Number(e.target.value);
+                    const capped = groupModal.totalPeople > 2 ? Math.min(groupModal.totalPeople, raw) : raw;
+                    setGroupCount(Math.max(2, capped));
+                  }}
                   autoFocus
                 />
               </label>
+              {splitError && <p className="ss-modal-error">{splitError}</p>}
               <div className="ss-modal-footer">
                 <button
                   className="ss-modal-btn ss-modal-btn--danger"
                   disabled={groupSplitting}
                   onClick={async () => {
                     setGroupSplitting(true);
+                    setSplitError(null);
                     try {
                       await deleteCustomerGroupSplitting(groupModal.customerName);
                       setGroupModal(null);
+                    } catch (err) {
+                      setSplitError(err instanceof Error ? err.message : "Delete failed");
                     } finally {
                       setGroupSplitting(false);
                     }
@@ -1099,10 +1201,13 @@ export function PlannerGrid() {
                   disabled={groupSplitting}
                   onClick={async () => {
                     setGroupSplitting(true);
+                    setSplitError(null);
                     try {
                       await deleteCustomerGroupSplitting(groupModal.customerName);
                       await splitCustomerGroups(groupModal.customerName, groupModal.totalPeople, groupCount);
                       setGroupModal(null);
+                    } catch (err) {
+                      setSplitError(err instanceof Error ? err.message : "Redo failed");
                     } finally {
                       setGroupSplitting(false);
                     }
