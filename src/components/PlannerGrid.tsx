@@ -755,6 +755,16 @@ export function PlannerGrid() {
                       try { return JSON.parse(task.customerGroups!); } catch { return []; }
                     })() : [];
 
+                  // Ghost row: render after ALL group sub-tasks for a parent, not between parent and groups.
+                  // For a non-group parent: defer ghost if group sub-tasks follow immediately.
+                  // For a group sub-task: render the parent's ghost after the last sibling.
+                  const nextEntry = displayTasks[rowIndex + 1];
+                  const isLastBeforeNewBlock = !nextEntry?.isGroup;
+                  const shouldRenderGhost = isLastBeforeNewBlock && (!isGroup || Boolean(task.parentTask));
+                  const ghostTaskRef = isGroup
+                    ? (taskLookup[task.parentTask ?? ""] ?? null)
+                    : task;
+
                   return [
                     <div key={task.name} style={{ display: "contents" }}>
                       <div
@@ -907,19 +917,19 @@ export function PlannerGrid() {
                       )}
                     </div>,
 
-                    ...(!isGroup ? [
-                      <div key={`ghost-${task.name}`} style={{ display: "contents" }}>
+                    ...(shouldRenderGhost && ghostTaskRef ? [
+                      <div key={`ghost-${ghostTaskRef.name}`} style={{ display: "contents" }}>
                         <div
                           className="ss-guide-cell ss-task-ghost"
-                          style={{ borderLeft: `4px solid ${task.color}33` }}
+                          style={{ borderLeft: `4px solid ${ghostTaskRef.color}33` }}
                         >
-                          <span className="ss-ghost-customer">{task.customerName}</span>
+                          <span className="ss-ghost-customer">{ghostTaskRef.customerName}</span>
                           <span className="ss-ghost-hint">+ add activity</span>
                         </div>
                         {blockDays.flatMap((day) =>
                           SLOTS.map((slot) => (
                             <div
-                              key={`ghost-${task.name}-${day.index}-${slot}`}
+                              key={`ghost-${ghostTaskRef.name}-${day.index}-${slot}`}
                               className="ss-cell ss-cell--ghost"
                               onMouseDown={(e) => {
                                 e.preventDefault();
@@ -929,7 +939,7 @@ export function PlannerGrid() {
                                   dayIso: day.iso,
                                   slot,
                                   anchor: { x: rect.left, y: rect.bottom },
-                                  presetCustomer: task.customerName
+                                  presetCustomer: ghostTaskRef.customerName
                                 });
                               }}
                             >

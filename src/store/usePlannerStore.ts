@@ -619,13 +619,18 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   },
 
   async removeTask(taskName) {
-    const task = get().week.tasks.find((t) => t.name === taskName);
+    const tasks = get().week.tasks;
+    const task = tasks.find((t) => t.name === taskName);
     if (!task) return;
+    // When removing a parent, also remove its group sub-tasks so they don't become orphaned
+    // (orphaned sub-tasks have parentTask set but no parent in the list → invisible in displayTasks)
+    const subTaskNames = new Set(tasks.filter((t) => t.parentTask === taskName).map((t) => t.name));
     const nextWeek = {
       ...get().week,
-      tasks: get().week.tasks.filter((t) => t.name !== taskName),
+      tasks: tasks.filter((t) => t.name !== taskName && !subTaskNames.has(t.name)),
       allocations: get().week.allocations.filter((a) => {
         if (a.taskName === taskName) return false;
+        if (a.taskName && subTaskNames.has(a.taskName)) return false;
         // For non-group parent tasks, also remove legacy allocations (no taskName) for same subject+customer
         if (!task.parentTask && !a.taskName && a.subject === task.subject && a.customerName === task.customerName) return false;
         return true;
