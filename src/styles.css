@@ -1203,6 +1203,30 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 .ss-cell--customer:hover .ss-cell-guide-remove { opacity: 1; }
 .ss-cell-guide-remove:hover { background: rgba(0,0,0,.4); box-shadow: none; }
 
+/* ── Per-cell task remove button (top-right, hover-reveal) ── */
+.ss-cell-task-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: rgba(0,0,0,.28);
+  color: inherit;
+  font-size: .68rem;
+  border-radius: 2px;
+  opacity: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: opacity 120ms;
+}
+.ss-cell--customer:hover .ss-cell-task-remove { opacity: 1; }
+.ss-cell-task-remove:hover { background: rgba(192,57,43,.75) !important; color: #fff; box-shadow: none; }
+
 /* ── Frozen customer cell ─────────────────────────────────── */
 .ss-cell--frozen { cursor: default !important; }
 

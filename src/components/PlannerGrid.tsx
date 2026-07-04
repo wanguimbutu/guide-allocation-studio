@@ -77,6 +77,7 @@ function CustomerCell({
 
   const isFrozen = usePlannerStore((state) => Boolean(state.frozenTasks[task.name]));
   const removeAllocation = usePlannerStore((state) => state.removeAllocation);
+  const removeTaskDay = usePlannerStore((state) => state.removeTaskDay);
 
   const isInSelection = usePlannerStore((state) => {
     if (!state.selection || state.selection.anchor.section !== "activity") return false;
@@ -178,6 +179,17 @@ function CustomerCell({
             </button>
           </div>
         )}
+        <button
+          className="ss-cell-task-remove"
+          title="Remove this activity from this day"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            void removeTaskDay(task.name, dayIso);
+          }}
+        >
+          ×
+        </button>
       </div>
     </div>
   );
@@ -486,7 +498,8 @@ export function PlannerGrid() {
   const [groupSplitting, setGroupSplitting] = useState(false);
   const [splitError, setSplitError] = useState<string | null>(null);
 
-  // ── Flat display list: parent tasks + their group subtasks in order ───────────
+  // ── Flat display list: all parents for a customer first, then all their sub-tasks
+  // This ensures newly added activities appear adjacent to the parent row (not after groups).
   const displayTasks = useMemo(() => {
     const parents = week.tasks.filter((t) => !t.parentTask);
     const subtaskMap = new Map<string, typeof week.tasks>();
@@ -497,11 +510,24 @@ export function PlannerGrid() {
         subtaskMap.set(t.parentTask, arr);
       }
     }
+    // Group parent tasks by customer (preserving first-seen order from week.tasks)
+    const customerOrder: string[] = [];
+    const byCustomer = new Map<string, typeof parents>();
+    for (const p of parents) {
+      if (!byCustomer.has(p.customerName)) {
+        customerOrder.push(p.customerName);
+        byCustomer.set(p.customerName, []);
+      }
+      byCustomer.get(p.customerName)!.push(p);
+    }
     const flat: Array<{ task: (typeof week.tasks)[number]; isGroup: boolean }> = [];
-    for (const parent of parents) {
-      flat.push({ task: parent, isGroup: false });
-      for (const sub of subtaskMap.get(parent.name) ?? []) {
-        flat.push({ task: sub, isGroup: true });
+    for (const cName of customerOrder) {
+      const cParents = byCustomer.get(cName)!;
+      for (const parent of cParents) flat.push({ task: parent, isGroup: false });
+      for (const parent of cParents) {
+        for (const sub of subtaskMap.get(parent.name) ?? []) {
+          flat.push({ task: sub, isGroup: true });
+        }
       }
     }
     return flat;
@@ -755,15 +781,11 @@ export function PlannerGrid() {
                       try { return JSON.parse(task.customerGroups!); } catch { return []; }
                     })() : [];
 
-                  // Ghost row: render after ALL group sub-tasks for a parent, not between parent and groups.
-                  // For a non-group parent: defer ghost if group sub-tasks follow immediately.
-                  // For a group sub-task: render the parent's ghost after the last sibling.
-                  const nextEntry = displayTasks[rowIndex + 1];
-                  const isLastBeforeNewBlock = !nextEntry?.isGroup;
-                  const shouldRenderGhost = isLastBeforeNewBlock && (!isGroup || Boolean(task.parentTask));
-                  const ghostTaskRef = isGroup
-                    ? (taskLookup[task.parentTask ?? ""] ?? null)
-                    : task;
+                  // Ghost row: render immediately after each non-group parent row.
+                  // With displayTasks ordering (parents before sub-tasks per customer),
+                  // clicking "+" creates a new activity that appears adjacent to the parent, above groups.
+                  const shouldRenderGhost = !isGroup;
+                  const ghostTaskRef = task;
 
                   return [
                     <div key={task.name} style={{ display: "contents" }}>
@@ -917,7 +939,7 @@ export function PlannerGrid() {
                       )}
                     </div>,
 
-                    ...(shouldRenderGhost && ghostTaskRef ? [
+                    ...(shouldRenderGhost ? [
                       <div key={`ghost-${ghostTaskRef.name}`} style={{ display: "contents" }}>
                         <div
                           className="ss-guide-cell ss-task-ghost"
