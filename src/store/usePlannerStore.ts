@@ -632,15 +632,19 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     const { week } = get();
     const task = week.tasks.find((t) => t.name === taskName);
     if (!task) return;
-    const start = task.expStartDate ?? dayIso;
-    const end = task.expEndDate ?? dayIso;
+    // assignedDate takes precedence in isTaskOnDay, so treat it as the anchor and clear it
+    const assigned = task.assignedDate?.slice(0, 10);
+    const start = assigned ?? task.expStartDate ?? dayIso;
+    const end = assigned ?? task.expEndDate ?? task.expStartDate ?? dayIso;
     const newStart = dayIso < start ? dayIso : start;
     const newEnd = dayIso > end ? dayIso : end;
-    if (newStart === start && newEnd === end) return;
+    if (!assigned && newStart === start && newEnd === end) return;
     const nextWeek = {
       ...week,
       tasks: week.tasks.map((t) =>
-        t.name === taskName ? { ...t, expStartDate: newStart, expEndDate: newEnd } : t
+        t.name === taskName
+          ? { ...t, expStartDate: newStart, expEndDate: newEnd, assignedDate: null }
+          : t
       )
     };
     await saveWeek(nextWeek);
@@ -676,28 +680,36 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     const task = week.tasks.find((t) => t.name === taskName);
     if (!task) return;
 
-    const start = task.assignedDate?.slice(0, 10) ?? task.expStartDate ?? "";
+    // Normalize: treat assignedDate as a single-day anchor (same as extendTaskToDay)
+    const assigned = task.assignedDate?.slice(0, 10);
+    const start = assigned ?? task.expStartDate ?? "";
     const end = task.expEndDate ?? start;
 
-    // Single-day (or assigned-date) task: removing that day removes the whole task
-    if ((task.assignedDate && task.assignedDate.slice(0, 10) === dayIso) || (start === dayIso && start === end)) {
+    const dayIndex = Math.round(
+      (new Date(dayIso).getTime() - new Date(week.weekStart).getTime()) / 86400000
+    );
+
+    // Only day in the range: remove the entire task
+    if (start === end && dayIso === start) {
       await get().removeTask(taskName);
       return;
     }
 
-    // Multi-day task: trim the date range and remove any allocations for that day
-    const dayIndex = Math.round(
-      (new Date(dayIso).getTime() - new Date(week.weekStart).getTime()) / 86400000
-    );
-    let updatedTask = task;
-    if (dayIso === start) {
+    let updatedTask: TaskItem;
+    if (dayIso <= start) {
+      // Remove first day (or before): advance start
       const nextDay = new Date(new Date(start).getTime() + 86400000).toISOString().slice(0, 10);
-      updatedTask = { ...task, expStartDate: nextDay };
-    } else if (dayIso === end) {
+      updatedTask = { ...task, expStartDate: nextDay, expEndDate: end, assignedDate: null };
+    } else if (dayIso >= end) {
+      // Remove last day (or after): regress end
       const prevDay = new Date(new Date(end).getTime() - 86400000).toISOString().slice(0, 10);
-      updatedTask = { ...task, expEndDate: prevDay };
+      updatedTask = { ...task, expStartDate: start, expEndDate: prevDay, assignedDate: null };
+    } else {
+      // Middle day: clip range to start → day before clicked (tail is lost, range shrinks)
+      const prevDay = new Date(new Date(dayIso).getTime() - 86400000).toISOString().slice(0, 10);
+      updatedTask = { ...task, expStartDate: start, expEndDate: prevDay, assignedDate: null };
     }
-    // Middle day: trimming isn't supported without splitting, so just remove the guide allocation
+
     const nextWeek = {
       ...week,
       tasks: week.tasks.map((t) => (t.name === taskName ? updatedTask : t)),
