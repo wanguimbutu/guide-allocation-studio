@@ -1050,12 +1050,7 @@ export function PlannerGrid() {
                 ))}
                     </>
                   );
-                  return weeksToShow > 1 ? (
-                    <>
-                      {guideSection}
-                      {activitySection}
-                    </>
-                  ) : (
+                  return (
                     <>
                       {activitySection}
                       {guideSection}

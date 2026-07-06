@@ -517,7 +517,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     const action: PendingAction = {
       id: generateId("remove-allocation"),
       type: "remove-allocation",
-      payload: { instructor: allocation.instructor, activity_date: activityDate, activity_name: allocation.subject, slot: allocation.slot },
+      payload: { instructor: allocation.instructor, activity_date: activityDate, activity_name: allocation.subject, slot: allocation.slot, task_name: allocation.taskName, allocation_id: allocation.allocationId },
       createdAt: Date.now()
     };
 
@@ -628,10 +628,12 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     const subTaskNames = new Set(tasks.filter((t) => t.parentTask === taskName).map((t) => t.name));
     const nextWeek = {
       ...get().week,
-      tasks: tasks.filter((t) => t.name !== taskName && !subTaskNames.has(t.name)),
+      // Promote sub-tasks to independent rows rather than deleting them
+      tasks: tasks
+        .filter((t) => t.name !== taskName)
+        .map((t) => (subTaskNames.has(t.name) ? { ...t, parentTask: null } : t)),
       allocations: get().week.allocations.filter((a) => {
         if (a.taskName === taskName) return false;
-        if (a.taskName && subTaskNames.has(a.taskName)) return false;
         // For non-group parent tasks, also remove legacy allocations (no taskName) for same subject+customer
         if (!task.parentTask && !a.taskName && a.subject === task.subject && a.customerName === task.customerName) return false;
         return true;
