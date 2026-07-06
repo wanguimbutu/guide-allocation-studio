@@ -398,6 +398,7 @@ export function PlannerGrid() {
   const config = usePlannerStore((state) => state.config);
   const assignTask = usePlannerStore((state) => state.assignTask);
   const addTask = usePlannerStore((state) => state.addTask);
+  const extendTaskToDay = usePlannerStore((state) => state.extendTaskToDay);
   const removeTask = usePlannerStore((state) => state.removeTask);
   const checkedTasks = usePlannerStore((state) => state.checkedTasks);
   const frozenTasks = usePlannerStore((state) => state.frozenTasks);
@@ -558,20 +559,8 @@ export function PlannerGrid() {
   );
 
   // ── Add activity to a specific day in its row ────────────────────────────────
-  const handleAddDay = (taskName: string, dayIso: string, slot: Slot) => {
-    const task = week.tasks.find((t) => t.name === taskName);
-    if (!task) return;
-    void addTask({
-      subject: task.subject,
-      customerName: task.customerName,
-      color: task.color,
-      expStartDate: dayIso,
-      expEndDate: dayIso,
-      assignedSlot: slot,
-      noOfPeople: task.noOfPeople,
-      status: task.status,
-      project: task.project,
-    });
+  const handleAddDay = (taskName: string, dayIso: string, _slot: Slot) => {
+    void extendTaskToDay(taskName, dayIso);
   };
 
   // ── Activity picker ──────────────────────────────────────────────────────────

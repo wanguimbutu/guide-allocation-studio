@@ -90,6 +90,7 @@ interface PlannerState {
   hiddenTasks: Record<string, boolean>;
   taskDisplayOrder: string[];
   addTask: (task: Omit<TaskItem, "name">) => Promise<void>;
+  extendTaskToDay: (taskName: string, dayIso: string) => Promise<void>;
   removeTask: (taskName: string) => Promise<void>;
   removeTaskDay: (taskName: string, dayIso: string) => Promise<void>;
   toggleTaskChecked: (taskName: string) => void;
@@ -623,6 +624,25 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         ? [...tasks.slice(0, lastIdx + 1), newTask, ...tasks.slice(lastIdx + 1)]
         : [...tasks, newTask];
     const nextWeek = { ...week, tasks: newTasks };
+    await saveWeek(nextWeek);
+    set({ week: nextWeek });
+  },
+
+  async extendTaskToDay(taskName, dayIso) {
+    const { week } = get();
+    const task = week.tasks.find((t) => t.name === taskName);
+    if (!task) return;
+    const start = task.expStartDate ?? dayIso;
+    const end = task.expEndDate ?? dayIso;
+    const newStart = dayIso < start ? dayIso : start;
+    const newEnd = dayIso > end ? dayIso : end;
+    if (newStart === start && newEnd === end) return;
+    const nextWeek = {
+      ...week,
+      tasks: week.tasks.map((t) =>
+        t.name === taskName ? { ...t, expStartDate: newStart, expEndDate: newEnd } : t
+      )
+    };
     await saveWeek(nextWeek);
     set({ week: nextWeek });
   },
