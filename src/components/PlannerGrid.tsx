@@ -43,7 +43,8 @@ function CustomerCell({
   hidden,
   onCellMouseDown,
   onCellMouseEnter,
-  onPickActivity
+  onPickActivity,
+  onAddDay
 }: {
   task: TaskItem;
   dayIso: string;
@@ -54,6 +55,7 @@ function CustomerCell({
   onCellMouseDown: (e: React.MouseEvent, section: "activity" | "guide", row: number, col: number) => void;
   onCellMouseEnter: (section: "activity" | "guide", row: number, col: number) => void;
   onPickActivity: (dayIso: string, slot: Slot, customerName: string, anchor: { x: number; y: number }) => void;
+  onAddDay: (taskName: string, dayIso: string, slot: Slot) => void;
 }) {
   const colIndex = dayIndex * 2 + (slot === "AM" ? 0 : 1);
   const active = isTaskOnDay(task, dayIso);
@@ -119,7 +121,7 @@ function CustomerCell({
   if (!active) {
     return (
       <div
-        className={clsx("ss-cell ss-cell--inactive", {
+        className={clsx("ss-cell ss-cell--inactive ss-cell--addable", {
           "ss-cell--in-selection": isInSelection,
           "ss-cell--selection-anchor": isAnchor && !clipboardVisual,
           "ss-cell--copy-source": clipboardVisual === "copy",
@@ -128,11 +130,13 @@ function CustomerCell({
         })}
         onMouseDown={(e) => onCellMouseDown(e, "activity", rowIndex, colIndex)}
         onMouseEnter={() => onCellMouseEnter("activity", rowIndex, colIndex)}
-        onDoubleClick={(e) => {
-          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          onPickActivity(dayIso, slot, task.customerName, { x: rect.left, y: rect.bottom });
+        onClick={(e) => {
+          e.stopPropagation();
+          onAddDay(task.name, dayIso, slot);
         }}
-      />
+      >
+        <span className="ss-cell-add-hint">+</span>
+      </div>
     );
   }
 
@@ -403,10 +407,14 @@ export function PlannerGrid() {
   const setGuideSlotPref = usePlannerStore((state) => state.setGuideSlotPref);
   const hiddenGuides = usePlannerStore((state) => state.hiddenGuides);
   const hiddenGroupRows = usePlannerStore((state) => state.hiddenGroupRows);
+  const hiddenTasks = usePlannerStore((state) => state.hiddenTasks);
   const toggleGuideHidden = usePlannerStore((state) => state.toggleGuideHidden);
   const toggleGroupRowHidden = usePlannerStore((state) => state.toggleGroupRowHidden);
+  const toggleTaskHidden = usePlannerStore((state) => state.toggleTaskHidden);
   const unhideAllGuides = usePlannerStore((state) => state.unhideAllGuides);
   const unhideAllGroupRows = usePlannerStore((state) => state.unhideAllGroupRows);
+  const unhideAllTasks = usePlannerStore((state) => state.unhideAllTasks);
+  const setTaskDisplayOrder = usePlannerStore((state) => state.setTaskDisplayOrder);
 
   const splitCustomerGroups = usePlannerStore((state) => state.splitCustomerGroups);
   const deleteCustomerGroupSplitting = usePlannerStore((state) => state.deleteCustomerGroupSplitting);
@@ -533,6 +541,11 @@ export function PlannerGrid() {
     return flat;
   }, [week.tasks]);
 
+  // Keep store in sync so copy/paste uses the correct row-to-task mapping
+  useEffect(() => {
+    setTaskDisplayOrder(displayTasks.map((dt) => dt.task.name));
+  }, [displayTasks, setTaskDisplayOrder]);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [activeTaskName, setActiveTaskName] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -543,6 +556,23 @@ export function PlannerGrid() {
     () => Object.fromEntries(week.tasks.map((t) => [t.name, t])),
     [week.tasks]
   );
+
+  // ── Add activity to a specific day in its row ────────────────────────────────
+  const handleAddDay = (taskName: string, dayIso: string, slot: Slot) => {
+    const task = week.tasks.find((t) => t.name === taskName);
+    if (!task) return;
+    void addTask({
+      subject: task.subject,
+      customerName: task.customerName,
+      color: task.color,
+      expStartDate: dayIso,
+      expEndDate: dayIso,
+      assignedSlot: slot,
+      noOfPeople: task.noOfPeople,
+      status: task.status,
+      project: task.project,
+    });
+  };
 
   // ── Activity picker ──────────────────────────────────────────────────────────
   const handlePickActivity = (
@@ -765,8 +795,11 @@ export function PlannerGrid() {
                   label="Activities"
                   colCount={slotCount}
                   onAdd={wi === 0 ? () => setShowAddModal(true) : undefined}
-                  hiddenCount={wi === 0 ? Object.values(hiddenGroupRows).filter(Boolean).length : 0}
-                  onUnhideAll={wi === 0 ? unhideAllGroupRows : undefined}
+                  hiddenCount={wi === 0 ? (
+                    Object.values(hiddenGroupRows).filter(Boolean).length +
+                    Object.values(hiddenTasks).filter(Boolean).length
+                  ) : 0}
+                  onUnhideAll={wi === 0 ? () => { unhideAllGroupRows(); unhideAllTasks(); } : undefined}
                 />
 
                 {displayTasks.length === 0 && wi === 0 && (
@@ -796,7 +829,9 @@ export function PlannerGrid() {
                           "ss-task-label--frozen": frozenTasks[task.name],
                           "ss-task-label--pinned": pinnedTask === task.name,
                           "ss-task-label--group-row": isGroup,
-                          "ss-row-hidden": isGroup && hiddenGroupRows[task.name]
+                          "ss-row-hidden": isGroup
+                            ? Boolean(hiddenGroupRows[task.name])
+                            : Boolean(hiddenTasks[task.name])
                         })}
                         style={{
                           background: task.color,
@@ -897,6 +932,17 @@ export function PlannerGrid() {
                               </button>
                             )}
                             <button
+                              className="ss-row-hide-btn"
+                              title="Hide this row"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleTaskHidden(task.name);
+                              }}
+                            >
+                              🙈
+                            </button>
+                            <button
                               className="ss-task-freeze"
                               title={frozenTasks[task.name] ? "Unfreeze" : "Freeze (prevent drag)"}
                               onMouseDown={(e) => e.stopPropagation()}
@@ -930,10 +976,14 @@ export function PlannerGrid() {
                             dayIndex={day.index}
                             slot={slot}
                             rowIndex={rowIndex}
-                            hidden={isGroup && Boolean(hiddenGroupRows[task.name])}
+                            hidden={
+                              (isGroup && Boolean(hiddenGroupRows[task.name])) ||
+                              (!isGroup && Boolean(hiddenTasks[task.name]))
+                            }
                             onCellMouseDown={handleCellMouseDown}
                             onCellMouseEnter={handleCellMouseEnter}
                             onPickActivity={handlePickActivity}
+                            onAddDay={handleAddDay}
                           />
                         ))
                       )}

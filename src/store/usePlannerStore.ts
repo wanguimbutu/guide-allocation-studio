@@ -87,6 +87,8 @@ interface PlannerState {
   guideSlotPrefs: Record<string, "AM" | "PM" | "Both">;
   hiddenGuides: Record<string, boolean>;
   hiddenGroupRows: Record<string, boolean>;
+  hiddenTasks: Record<string, boolean>;
+  taskDisplayOrder: string[];
   addTask: (task: Omit<TaskItem, "name">) => Promise<void>;
   removeTask: (taskName: string) => Promise<void>;
   removeTaskDay: (taskName: string, dayIso: string) => Promise<void>;
@@ -95,8 +97,11 @@ interface PlannerState {
   setGuideSlotPref: (instructor: string, pref: "AM" | "PM" | "Both") => void;
   toggleGuideHidden: (instructorName: string) => void;
   toggleGroupRowHidden: (taskName: string) => void;
+  toggleTaskHidden: (taskName: string) => void;
   unhideAllGuides: () => void;
   unhideAllGroupRows: () => void;
+  unhideAllTasks: () => void;
+  setTaskDisplayOrder: (names: string[]) => void;
   removeAllocationSession: (allocationId: string) => Promise<void>;
   splitCustomerGroups: (customerName: string, totalPeople: number, numberOfGroups: number) => Promise<void>;
   deleteCustomerGroupSplitting: (customerName: string) => Promise<void>;
@@ -199,6 +204,7 @@ function taskActiveOnDay(task: TaskItem, dayIso: string): boolean {
 
 /** Build clipboard items for the activity section */
 function buildActivityClipboard(
+  orderedTasks: PlannerWeek["tasks"],
   week: PlannerWeek,
   minRow: number,
   maxRow: number,
@@ -211,7 +217,7 @@ function buildActivityClipboard(
   const seen = new Set<string>();
 
   for (let r = minRow; r <= maxRow; r++) {
-    const task = week.tasks[r];
+    const task = orderedTasks[r];
     if (!task || seen.has(task.name)) continue;
 
     // Find the first active column for this task within the selection range
@@ -319,6 +325,8 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   guideSlotPrefs: {},
   hiddenGuides: {},
   hiddenGroupRows: {},
+  hiddenTasks: {},
+  taskDisplayOrder: [],
   syncStatus: {
     online: typeof navigator !== "undefined" ? navigator.onLine : true,
     syncing: false,
@@ -711,6 +719,18 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     set({ hiddenGroupRows: {} });
   },
 
+  toggleTaskHidden(taskName) {
+    set((s) => ({ hiddenTasks: { ...s.hiddenTasks, [taskName]: !s.hiddenTasks[taskName] } }));
+  },
+
+  unhideAllTasks() {
+    set({ hiddenTasks: {} });
+  },
+
+  setTaskDisplayOrder(names) {
+    set({ taskDisplayOrder: names });
+  },
+
   async removeAllocationSession(allocationId) {
     const { week } = get();
     const target = week.allocations.find((a) => a.allocationId === allocationId);
@@ -908,7 +928,11 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       }
       set({ clipboard: { kind: "guide", cells, rowSpan: maxRow - minRow + 1, colSpan: maxCol - minCol + 1, mode: "copy", sourceMinRow: minRow, sourceMinCol: minCol } });
     } else {
-      set({ clipboard: buildActivityClipboard(week, minRow, maxRow, minCol, maxCol, "copy") });
+      const order = get().taskDisplayOrder;
+      const orderedTasks = order.length
+        ? order.map((n) => week.tasks.find((t) => t.name === n)).filter((t): t is TaskItem => !!t)
+        : week.tasks;
+      set({ clipboard: buildActivityClipboard(orderedTasks, week, minRow, maxRow, minCol, maxCol, "copy") });
     }
   },
 
@@ -930,7 +954,11 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       }
       set({ clipboard: { kind: "guide", cells, rowSpan: maxRow - minRow + 1, colSpan: maxCol - minCol + 1, mode: "cut", sourceMinRow: minRow, sourceMinCol: minCol } });
     } else {
-      set({ clipboard: buildActivityClipboard(week, minRow, maxRow, minCol, maxCol, "cut") });
+      const order = get().taskDisplayOrder;
+      const orderedTasks = order.length
+        ? order.map((n) => week.tasks.find((t) => t.name === n)).filter((t): t is TaskItem => !!t)
+        : week.tasks;
+      set({ clipboard: buildActivityClipboard(orderedTasks, week, minRow, maxRow, minCol, maxCol, "cut") });
     }
   },
 

@@ -814,6 +814,12 @@ input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-col
 }
 .ss-cell--ghost:hover .ss-cell-add-hint { color: #1a73e8; }
 
+/* Inactive activity-row cells — show + hint on hover, click to add that day */
+.ss-cell--addable { cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.ss-cell--addable .ss-cell-add-hint { font-size: .9rem; color: transparent; transition: color 100ms; user-select: none; }
+.ss-cell--addable:hover .ss-cell-add-hint { color: rgba(0,0,0,.25); }
+.ss-cell--addable:hover { background: rgba(0,0,0,.03); }
+
 /* ── Activity picker popup ────────────────────────────────── */
 .picker-backdrop {
   position: fixed;
