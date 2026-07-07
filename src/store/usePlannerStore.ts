@@ -705,12 +705,13 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       (a) => !(a.taskName === taskName && a.dayIndex === dayIndex && a.slot === slot)
     );
 
-    // Single-day task: only clear this slot's allocation — leave the task row intact
-    // (both AM and PM share the same single-day range; removing one must not delete the row)
+    // Single-day task: removing the only active day removes the task entirely.
+    // First persist cleared allocations, then remove the task via removeTask.
     if (start === end) {
       const nextWeek = { ...week, allocations: filteredAllocations };
       await saveWeek(nextWeek);
       set({ week: nextWeek });
+      await get().removeTask(taskName);
       return;
     }
 
