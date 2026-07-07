@@ -185,11 +185,15 @@ function CustomerCell({
         )}
         <button
           className="ss-cell-task-remove"
-          title="Remove this activity from this day"
+          title={guideAllocationId ? "Remove guide assignment" : "Remove this activity from this day"}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            void removeTaskDay(task.name, dayIso, slot);
+            if (guideAllocationId) {
+              void removeAllocation(guideAllocationId);
+            } else {
+              void removeTaskDay(task.name, dayIso, slot);
+            }
           }}
         >
           ×
