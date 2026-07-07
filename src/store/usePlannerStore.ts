@@ -89,7 +89,7 @@ interface PlannerState {
   hiddenGroupRows: Record<string, boolean>;
   hiddenTasks: Record<string, boolean>;
   taskDisplayOrder: string[];
-  addTask: (task: Omit<TaskItem, "name">) => Promise<void>;
+  addTask: (task: Omit<TaskItem, "name">, insertAfterTaskName?: string) => Promise<void>;
   extendTaskToDay: (taskName: string, dayIso: string) => Promise<void>;
   removeTask: (taskName: string) => Promise<void>;
   removeTaskDay: (taskName: string, dayIso: string, slot: Slot) => Promise<void>;
@@ -622,14 +622,22 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   // ── Task management ─────────────────────────────────────────────────────────
 
-  async addTask(task) {
+  async addTask(task, insertAfterTaskName) {
     const { week } = get();
     const tasks = week.tasks;
-    // Inherit color from existing task of same customer, then insert after that customer's last row
     const existingCustomerTask = tasks.find((t) => t.customerName === task.customerName && !t.parentTask);
     const color = existingCustomerTask?.color ?? task.color;
     const newTask: TaskItem = { name: generateId("local"), ...task, color };
-    const lastIdx = tasks.reduce((idx, t, i) => (t.customerName === task.customerName ? i : idx), -1);
+
+    // If told exactly where to insert, place right after that task; otherwise after the last task of that customer
+    const anchorIdx = insertAfterTaskName
+      ? tasks.findIndex((t) => t.name === insertAfterTaskName)
+      : -1;
+    const lastIdx =
+      anchorIdx >= 0
+        ? anchorIdx
+        : tasks.reduce((idx, t, i) => (t.customerName === task.customerName ? i : idx), -1);
+
     const newTasks =
       lastIdx >= 0
         ? [...tasks.slice(0, lastIdx + 1), newTask, ...tasks.slice(lastIdx + 1)]
