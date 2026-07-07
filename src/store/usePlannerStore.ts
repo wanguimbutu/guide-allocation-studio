@@ -526,7 +526,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     const action: PendingAction = {
       id: generateId("remove-allocation"),
       type: "remove-allocation",
-      payload: { instructor: allocation.instructor, activity_date: activityDate, activity_name: allocation.subject, slot: allocation.slot, task_name: allocation.taskName, allocation_id: allocation.allocationId },
+      payload: { instructor: allocation.instructor, activity_date: activityDate, activity_name: allocation.subject, slot: allocation.slot, task_name: allocation.taskName, allocation_id: allocation.erpAllocId ?? allocation.allocationId },
       createdAt: Date.now()
     };
 

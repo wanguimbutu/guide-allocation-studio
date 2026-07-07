@@ -26,7 +26,8 @@ export interface Instructor {
 }
 
 export interface AllocationItem {
-  allocationId: string;
+  allocationId: string;    // local unique key — always record.name from ERPNext
+  erpAllocId?: string;     // ERPNext allocation_id field (may be shared; used only in delete payload)
   taskName?: string;
   subject: string;
   customerName: string;

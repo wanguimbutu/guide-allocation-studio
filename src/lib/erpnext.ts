@@ -111,7 +111,8 @@ function normalizeWeekData(raw: Record<string, unknown>): PlannerWeek {
 
     return [
       {
-        allocationId: String(record.allocation_id ?? record.name ?? ""),
+        allocationId: String(record.name ?? record.allocation_id ?? ""),
+        erpAllocId: record.allocation_id ? String(record.allocation_id) : undefined,
         taskName: record.task ? String(record.task) : undefined,
         subject: String(record.detail_activity_name ?? record.activity_name ?? ""),
         customerName: String(record.customer ?? "Unknown"),
