@@ -92,7 +92,7 @@ interface PlannerState {
   addTask: (task: Omit<TaskItem, "name">) => Promise<void>;
   extendTaskToDay: (taskName: string, dayIso: string) => Promise<void>;
   removeTask: (taskName: string) => Promise<void>;
-  removeTaskDay: (taskName: string, dayIso: string) => Promise<void>;
+  removeTaskDay: (taskName: string, dayIso: string, slot: Slot) => Promise<void>;
   toggleTaskChecked: (taskName: string) => void;
   toggleTaskFrozen: (taskName: string) => void;
   setGuideSlotPref: (instructor: string, pref: "AM" | "PM" | "Both") => void;
@@ -675,7 +675,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     set({ week: nextWeek });
   },
 
-  async removeTaskDay(taskName, dayIso) {
+  async removeTaskDay(taskName, dayIso, slot) {
     const { week } = get();
     const task = week.tasks.find((t) => t.name === taskName);
     if (!task) return;
@@ -714,7 +714,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...week,
       tasks: week.tasks.map((t) => (t.name === taskName ? updatedTask : t)),
       allocations: week.allocations.filter(
-        (a) => !(a.taskName === taskName && a.dayIndex === dayIndex)
+        (a) => !(a.taskName === taskName && a.dayIndex === dayIndex && a.slot === slot)
       )
     };
     await saveWeek(nextWeek);

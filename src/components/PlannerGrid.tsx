@@ -189,7 +189,7 @@ function CustomerCell({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            void removeTaskDay(task.name, dayIso);
+            void removeTaskDay(task.name, dayIso, slot);
           }}
         >
           ×
