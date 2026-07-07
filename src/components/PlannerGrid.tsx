@@ -55,7 +55,7 @@ function CustomerCell({
   onCellMouseDown: (e: React.MouseEvent, section: "activity" | "guide", row: number, col: number) => void;
   onCellMouseEnter: (section: "activity" | "guide", row: number, col: number) => void;
   onPickActivity: (dayIso: string, slot: Slot, customerName: string, anchor: { x: number; y: number }) => void;
-  onAddDay: (taskName: string, dayIso: string, slot: Slot, anchor: { x: number; y: number }) => void;
+  onAddDay: (taskName: string, dayIso: string) => void;
 }) {
   const colIndex = dayIndex * 2 + (slot === "AM" ? 0 : 1);
   const active = isTaskOnDay(task, dayIso);
@@ -132,8 +132,7 @@ function CustomerCell({
         onMouseEnter={() => onCellMouseEnter("activity", rowIndex, colIndex)}
         onClick={(e) => {
           e.stopPropagation();
-          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          onAddDay(task.name, dayIso, slot, { x: rect.left, y: rect.bottom });
+          onAddDay(task.name, dayIso);
         }}
       >
         <span className="ss-cell-add-hint">+</span>
@@ -396,7 +395,6 @@ interface PickerTarget {
   slot: Slot;
   anchor: { x: number; y: number };
   presetCustomer?: string;
-  sourceTaskName?: string;
 }
 
 export function PlannerGrid() {
@@ -567,10 +565,8 @@ export function PlannerGrid() {
   // ── Add activity to a specific day in its row ────────────────────────────────
   // Opens the picker pre-filled with the row's customer so the user can choose
   // which activity to place there (not just extend the existing one).
-  const handleAddDay = (taskName: string, dayIso: string, slot: Slot, anchor: { x: number; y: number }) => {
-    const task = week.tasks.find((t) => t.name === taskName);
-    if (!task) return;
-    setPickerTarget({ dayIso, slot, anchor, presetCustomer: task.customerName, sourceTaskName: taskName });
+  const handleAddDay = (taskName: string, dayIso: string) => {
+    void extendTaskToDay(taskName, dayIso);
   };
 
   // ── Activity picker ──────────────────────────────────────────────────────────
@@ -1136,26 +1132,14 @@ export function PlannerGrid() {
           slot={pickerTarget.slot}
           anchor={pickerTarget.anchor}
           onPick={(activityName, customerName) => {
-            const src = pickerTarget.sourceTaskName
-              ? week.tasks.find((t) => t.name === pickerTarget.sourceTaskName)
-              : undefined;
-            if (src && src.subject.trim().toLowerCase() === activityName.trim().toLowerCase()) {
-              // Same activity — extend the existing row to cover this day
-              void extendTaskToDay(src.name, pickerTarget.dayIso);
-            } else {
-              // Different activity — add a new row right after the source task
-              void addTask(
-                {
-                  subject: activityName,
-                  customerName: customerName ?? src?.customerName ?? "—",
-                  color: colorFromName(activityName),
-                  expStartDate: pickerTarget.dayIso,
-                  expEndDate: pickerTarget.dayIso,
-                  noOfPeople: null
-                },
-                src?.name
-              );
-            }
+            void addTask({
+              subject: activityName,
+              customerName: customerName ?? "—",
+              color: colorFromName(activityName),
+              expStartDate: pickerTarget.dayIso,
+              expEndDate: pickerTarget.dayIso,
+              noOfPeople: null
+            });
             setPickerTarget(null);
           }}
           onCreateNew={(initialSubject) => {
