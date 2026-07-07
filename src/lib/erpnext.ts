@@ -109,14 +109,23 @@ function normalizeWeekData(raw: Record<string, unknown>): PlannerWeek {
     const startTime = String(record.start_time ?? "");
     const slot: Slot = startTime.includes("13:30") ? "PM" : "AM";
 
+    // Build a locally-unique ID: prefer the ERPNext docname (record.name), but fall
+    // back to a composite key so two allocations never share the same local ID even
+    // if record.name is absent or if record.allocation_id is a shared parent FK.
+    const instructor = String(record.instructor ?? "");
+    const activityDateStr = String(record.activity_date ?? "");
+    const compositeId = `${instructor}_${activityDateStr}_${slot}`;
+    const allocationId = String(record.name || compositeId);
+
     return [
       {
-        allocationId: String(record.name ?? record.allocation_id ?? ""),
+        allocationId,
         erpAllocId: record.allocation_id ? String(record.allocation_id) : undefined,
+        erpName: record.name ? String(record.name) : undefined,
         taskName: record.task ? String(record.task) : undefined,
         subject: String(record.detail_activity_name ?? record.activity_name ?? ""),
         customerName: String(record.customer ?? "Unknown"),
-        instructor: String(record.instructor ?? ""),
+        instructor,
         dayIndex,
         slot,
         color: String(record.color ?? "#8b8b8b")

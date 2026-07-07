@@ -507,6 +507,8 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   },
 
   async removeAllocation(allocationId) {
+    // Match strictly by instructor + dayIndex + slot so we never remove a sibling
+    // even if two allocations share the same allocationId string.
     const allocation = get().week.allocations.find((item) => item.allocationId === allocationId);
     if (!allocation) return;
 
@@ -516,41 +518,40 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       .toISOString()
       .slice(0, 10);
 
+    // Remove ONLY the exact allocation: match on all three identity fields
     const nextWeek = {
       ...get().week,
-      allocations: get().week.allocations.filter((item) => item.allocationId !== allocationId)
+      allocations: get().week.allocations.filter(
+        (item) =>
+          !(
+            item.instructor === allocation.instructor &&
+            item.dayIndex === allocation.dayIndex &&
+            item.slot === allocation.slot &&
+            (item.taskName ?? "") === (allocation.taskName ?? "")
+          )
+      )
     };
     await saveWeek(nextWeek);
     set({ week: nextWeek });
 
+    // Queue for background sync — do NOT re-fetch immediately.
+    // An instant re-fetch would let the server's over-deletion (it may delete by
+    // shared allocation_id FK) overwrite our local state ~2 s after the action.
     const action: PendingAction = {
       id: generateId("remove-allocation"),
       type: "remove-allocation",
-      payload: { instructor: allocation.instructor, activity_date: activityDate, activity_name: allocation.subject, slot: allocation.slot, task_name: allocation.taskName, allocation_id: allocation.erpAllocId ?? allocation.allocationId },
+      payload: {
+        instructor: allocation.instructor,
+        activity_date: activityDate,
+        activity_name: allocation.subject,
+        slot: allocation.slot,
+        task_name: allocation.taskName,
+        allocation_id: allocation.erpAllocId ?? allocation.erpName ?? allocation.allocationId
+      },
       createdAt: Date.now()
     };
-
-    const config = get().config;
-    if (config && navigator.onLine && get().weeksToShow === 1) {
-      try {
-        await flushPendingAction(config, action);
-        const fresh = await fetchWeek(config, get().week.weekStart);
-        // The backend may over-delete (shared allocation_id FK removes siblings).
-        // Merge: start from the fresh server state, then re-add any allocations that
-        // were in our post-delete local state but are now absent on the server.
-        const freshIds = new Set(fresh.allocations.map((a) => a.allocationId));
-        const preserved = nextWeek.allocations.filter((a) => !freshIds.has(a.allocationId));
-        const merged = { ...fresh, allocations: [...fresh.allocations, ...preserved] };
-        await saveWeek(merged);
-        set({ week: merged });
-      } catch {
-        await queueAction(action);
-        set((s) => ({ syncStatus: { ...s.syncStatus, pendingCount: s.syncStatus.pendingCount + 1 } }));
-      }
-    } else {
-      await queueAction(action);
-      set((s) => ({ syncStatus: { ...s.syncStatus, pendingCount: s.syncStatus.pendingCount + 1 } }));
-    }
+    await queueAction(action);
+    set((s) => ({ syncStatus: { ...s.syncStatus, pendingCount: s.syncStatus.pendingCount + 1 } }));
   },
 
   async toggleBlackout(instructor, dateIso, slot) {
