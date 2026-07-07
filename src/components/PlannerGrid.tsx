@@ -396,6 +396,7 @@ interface PickerTarget {
   slot: Slot;
   anchor: { x: number; y: number };
   presetCustomer?: string;
+  sourceTaskName?: string; // set when opened from an existing activity row cell
 }
 
 export function PlannerGrid() {
@@ -569,7 +570,7 @@ export function PlannerGrid() {
   const handleAddDay = (taskName: string, dayIso: string, slot: Slot, anchor: { x: number; y: number }) => {
     const task = week.tasks.find((t) => t.name === taskName);
     if (!task) return;
-    setPickerTarget({ dayIso, slot, anchor, presetCustomer: task.customerName });
+    setPickerTarget({ dayIso, slot, anchor, presetCustomer: task.customerName, sourceTaskName: taskName });
   };
 
   // ── Activity picker ──────────────────────────────────────────────────────────
@@ -1135,14 +1136,22 @@ export function PlannerGrid() {
           slot={pickerTarget.slot}
           anchor={pickerTarget.anchor}
           onPick={(activityName, customerName) => {
-            void addTask({
-              subject: activityName,
-              customerName: customerName ?? "—",
-              color: colorFromName(activityName),
-              expStartDate: pickerTarget.dayIso,
-              expEndDate: pickerTarget.dayIso,
-              noOfPeople: null
-            });
+            const src = pickerTarget.sourceTaskName
+              ? week.tasks.find((t) => t.name === pickerTarget.sourceTaskName)
+              : undefined;
+            if (src && src.subject === activityName) {
+              // Same activity as the source row — extend that row to cover this day
+              void extendTaskToDay(src.name, pickerTarget.dayIso);
+            } else {
+              void addTask({
+                subject: activityName,
+                customerName: customerName ?? "—",
+                color: colorFromName(activityName),
+                expStartDate: pickerTarget.dayIso,
+                expEndDate: pickerTarget.dayIso,
+                noOfPeople: null
+              });
+            }
             setPickerTarget(null);
           }}
           onCreateNew={(initialSubject) => {
