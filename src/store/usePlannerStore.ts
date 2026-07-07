@@ -532,8 +532,18 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
     const config = get().config;
     if (config && navigator.onLine && get().weeksToShow === 1) {
-      const ok = await tryFlushAndRefresh(config, action, get().week.weekStart, set);
-      if (!ok) {
+      try {
+        await flushPendingAction(config, action);
+        const fresh = await fetchWeek(config, get().week.weekStart);
+        // The backend may over-delete (shared allocation_id FK removes siblings).
+        // Merge: start from the fresh server state, then re-add any allocations that
+        // were in our post-delete local state but are now absent on the server.
+        const freshIds = new Set(fresh.allocations.map((a) => a.allocationId));
+        const preserved = nextWeek.allocations.filter((a) => !freshIds.has(a.allocationId));
+        const merged = { ...fresh, allocations: [...fresh.allocations, ...preserved] };
+        await saveWeek(merged);
+        set({ week: merged });
+      } catch {
         await queueAction(action);
         set((s) => ({ syncStatus: { ...s.syncStatus, pendingCount: s.syncStatus.pendingCount + 1 } }));
       }
