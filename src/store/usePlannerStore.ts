@@ -689,33 +689,44 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       (new Date(dayIso).getTime() - new Date(week.weekStart).getTime()) / 86400000
     );
 
-    // Only day in the range: remove the entire task
-    if (start === end && dayIso === start) {
-      await get().removeTask(taskName);
+    // Remove only this slot's guide allocation
+    const filteredAllocations = week.allocations.filter(
+      (a) => !(a.taskName === taskName && a.dayIndex === dayIndex && a.slot === slot)
+    );
+
+    // Single-day task: only clear this slot's allocation — leave the task row intact
+    // (both AM and PM share the same single-day range; removing one must not delete the row)
+    if (start === end) {
+      const nextWeek = { ...week, allocations: filteredAllocations };
+      await saveWeek(nextWeek);
+      set({ week: nextWeek });
       return;
     }
 
+    // Multi-day task: trim the range to exclude this day
     let updatedTask: TaskItem;
     if (dayIso <= start) {
-      // Remove first day (or before): advance start
       const nextDay = new Date(new Date(start).getTime() + 86400000).toISOString().slice(0, 10);
       updatedTask = { ...task, expStartDate: nextDay, expEndDate: end, assignedDate: null };
     } else if (dayIso >= end) {
-      // Remove last day (or after): regress end
       const prevDay = new Date(new Date(end).getTime() - 86400000).toISOString().slice(0, 10);
       updatedTask = { ...task, expStartDate: start, expEndDate: prevDay, assignedDate: null };
     } else {
-      // Middle day: clip range to start → day before clicked (tail is lost, range shrinks)
+      // Middle day: clip range to start → day before clicked
       const prevDay = new Date(new Date(dayIso).getTime() - 86400000).toISOString().slice(0, 10);
       updatedTask = { ...task, expStartDate: start, expEndDate: prevDay, assignedDate: null };
+    }
+
+    // If trimming empties the range, remove the task entirely
+    if (updatedTask.expStartDate! > updatedTask.expEndDate!) {
+      await get().removeTask(taskName);
+      return;
     }
 
     const nextWeek = {
       ...week,
       tasks: week.tasks.map((t) => (t.name === taskName ? updatedTask : t)),
-      allocations: week.allocations.filter(
-        (a) => !(a.taskName === taskName && a.dayIndex === dayIndex && a.slot === slot)
-      )
+      allocations: filteredAllocations
     };
     await saveWeek(nextWeek);
     set({ week: nextWeek });
